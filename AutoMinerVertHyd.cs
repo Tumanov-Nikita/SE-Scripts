@@ -38,60 +38,82 @@ public sealed class Program : MyGridProgram
      * Программный блок х1
      * Коннектор х1
      * Полет ИИ х1
-     * Регистратор событий ИИ х2
-     * Таймер х3
-     * 
+     * Регистратор событий ИИ x2:
+     *  Регистратор событий ИИ К Базе:
+     *   - Режим точности On; Выравнивание по гравитации Off
+     *   -
+     *   -
+     *   - Таймер коннект Старт
+     *  Регистратор событий ИИ От Базы:
+     *   -
+     *   - Полет ИИ Поведение ИИ Off
+     * Таймер х3:
+     *  Таймер К Базе:
+     *   - Полет ИИ Поведение ИИ On; Регистратор ИИ К Базе Поведение ИИ On; Регистратор ИИ К Базе Воспроизвести
+     *  Таймер коннект:
+     *   - Коннектор запереть On; Баки Накопитель On; Батареи Зарядка Зарядка
+     *  Таймер От Базы:
+     *   - Полет ИИ Поведение ИИ On; Регистратор ИИ От Базы Поведение ИИ On; Регистратор ИИ От Базы Воспроизвести; Режим точности Off; Выравнивание по гравитации On
      */
 
     #region Настройки
     /// <summary>
     /// Количество шахт квадратно-гнездового метода в ширину
     /// </summary>
-    public byte ShaftM = 3;
+    public readonly byte ShaftM = 2;
     /// <summary>
     /// Количество шахт квадратно-гнездового метода в длину
     /// </summary>
-    public byte ShaftN = 3;
+    public readonly byte ShaftN = 1;
     /// <summary>
     /// Порог заполнения хранилищ, в %
     /// </summary>
-    public float StorageCapacityThreshold = 75;
+    public readonly float StorageCapacityThreshold = 60;
     /// <summary>
     /// Порог заряда батарей, в %
     /// </summary>
-    public float BatteriesCapacityThreshold = 10;
+    public readonly float BatteriesCapacityThreshold = 10;
     /// <summary>
     /// Порог заполнения водородных баков, в %
     /// </summary>
-    public float TanksCapacityThreshold = 20;
+    public readonly float TanksCapacityThreshold = 50;
     /// <summary>
     /// Максимальная высота над уровнем моря для дуги перемещения, в метрах
     /// </summary>
-    public float ArcHeightMaximum = 10000;
+    public readonly float ArcHeightMaximum = 14000;
     /// <summary>
     /// Мультипликатор для сигнала гироскопам
     /// </summary>
-    public float GyroMult = 5;
+    public readonly float GyroMult = 5;
     /// <summary>
     /// Ограничение скорости для перемещения на поверхности, в м/c
     /// </summary>
-    public float SurfaceSpeedLimit = 200;
+    public readonly float SurfaceSpeedLimit = 400;
     /// <summary>
     /// Ограничение скорости для перемещения в шахте, в м/c
     /// </summary>
-    public float MiningSpeedLimit = 0.25f;
+    public readonly float MiningSpeedLimit = 0.15f;
     /// <summary>
     /// Максимально допустимая точность для совмещения с точкой назначения, в м
     /// </summary>
-    public float AcceptableMovingAccuracy = 0.5f;
+    public readonly float AcceptableMovingAccuracy = 0.5f;
     /// <summary>
     /// Дополнительный отступ от ширины/длины дрона для разметки шахт, в м
     /// </summary>
-    public float MiningMargin = 1.6f;
+    public readonly float MiningMargin = 1.4f;
+    /// <summary>
+    /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
+    /// </summary>
+    public readonly float AboveGroundSpeedMultiplier = 20f;
+    /// <summary>
+    /// Минимальная высота над поверхностью для ускоренного перемещения в режиме выкапывания шахты
+    /// </summary>
+    public readonly float AboveGroundSpeedHeight = 10f;
     /// <summary>
     /// Мультипликатор высоты для дуги перемещения, рекомендуется от 0.3 до 1
     /// </summary>
-    public float ArcHeightMult = 0.75f;
+    public readonly float ArcHeightMult = 0.9f;
+    
     #endregion
 
     #region Переменные для наименований блоков и групп блоков
@@ -210,29 +232,28 @@ public sealed class Program : MyGridProgram
     public class MiningHandler
     {
         #region Объявление переменных
-        private readonly IMyFlightMovementBlock flightMovement;
-        private readonly IMyEventControllerBlock eventController;
-        private readonly IMyRemoteControl remoteControl;
-        private readonly IMyTimerBlock timerForAIToBase, timerForAIFromBase;
-        private readonly List<IMyInventoryOwner> storages;
-        private readonly List<IMyBatteryBlock> batteries;
-        private readonly List<IMyGasTank> tanks;
-        private readonly List<IMyShipDrill> drills;
-        private readonly List<IMyGyro> gyros;
-        private readonly List<IMyShipConnector> connectors;
-        private readonly IMyBlockGroup storagesGroup, batteriesGroup, tanksGroup, drillsGroup, connectorsGroup;
-        private readonly List<IMyThrust> thrForward = new List<IMyThrust>();
-        private readonly List<IMyThrust> thrBackward = new List<IMyThrust>();
-        private readonly List<IMyThrust> thrRight = new List<IMyThrust>();
-        private readonly List<IMyThrust> thrLeft = new List<IMyThrust>();
-        private readonly List<IMyThrust> thrUp = new List<IMyThrust>();
-        private readonly List<IMyThrust> thrDown = new List<IMyThrust>();
-        private readonly double forwardThrustEff = 0;
-        private readonly double backwardThrustEff = 0;
-        private readonly double rightThrustEff = 0;
-        private readonly double leftThrustEff = 0;
-        private readonly double upThrustEff = 0;
-        private readonly double downThrustEff = 0;
+        private readonly IMyFlightMovementBlock FlightMovement;
+        private readonly IMyRemoteControl RemoteControl;
+        private readonly IMyTimerBlock TimerForAIToBase, TimerForAIFromBase;
+        private readonly List<IMyInventoryOwner> Storages;
+        private readonly List<IMyBatteryBlock> Batteries;
+        private readonly List<IMyGasTank> Tanks;
+        private readonly List<IMyShipDrill> Drills;
+        private readonly List<IMyGyro> Gyros;
+        private readonly List<IMyShipConnector> Connectors;
+        private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup;
+        private readonly List<IMyThrust> ThrForward = new List<IMyThrust>();
+        private readonly List<IMyThrust> ThrBackward = new List<IMyThrust>();
+        private readonly List<IMyThrust> ThrRight = new List<IMyThrust>();
+        private readonly List<IMyThrust> ThrLeft = new List<IMyThrust>();
+        private readonly List<IMyThrust> ThrUp = new List<IMyThrust>();
+        private readonly List<IMyThrust> ThrDown = new List<IMyThrust>();
+        private readonly double ForwardThrustEff = 0;
+        private readonly double BackwardThrustEff = 0;
+        private readonly double RightThrustEff = 0;
+        private readonly double LeftThrustEff = 0;
+        private readonly double UpThrustEff = 0;
+        private readonly double DownThrustEff = 0;
         private bool IsMiningComplete;
         private bool IsGridHorizontallyAligned;
         private Vector3D ForwardVector;
@@ -240,20 +261,20 @@ public sealed class Program : MyGridProgram
         private Vector3D MineCenterPosition;
         private Vector3D CurrentMiningPosition;
         private Vector3D BasePosition;
-        private List<ShaftMark> shaftMarks = new List<ShaftMark>();
-        private Vector3D arcStartPos;
-        private Vector3D arcTargetPos;
-        private Vector3D arcApexPos;
-        private Vector3D arcPlaneNormal;
-        private bool arcInitialized = false;
-        private bool arcIsAscending = true;
-        Vector3D sizeInMeters;
+        private List<ShaftMark> ShaftMarks = new List<ShaftMark>();
+        private bool IsMovingIntoShaft;
+        private Vector3D ArcStartPos;
+        private Vector3D ArcTargetPos;
+        private Vector3D ArcApexPos;
+        private Vector3D ArcPlaneNormal;
+        private bool ArcInitialized = false;
+        private bool ArcIsAscending = true;
+        Vector3D SizeInMeters;
 
 
         private readonly IMyProgrammableBlock pb;
         private readonly IMyTextPanel textPanel;
         private readonly IMyTextSurface LCD;
-        private double maxSpeed = 0;
         #endregion
 
         public MiningHandler()
@@ -265,40 +286,39 @@ public sealed class Program : MyGridProgram
             textPanel = (IMyTextPanel)myScript.GridTerminalSystem.GetBlockWithName("LCD panel");
 
 
-            flightMovement = (IMyFlightMovementBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.FlightControllerName);
-            eventController = (IMyEventControllerBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.EventControllerName);
-            remoteControl = (IMyRemoteControl)myScript.GridTerminalSystem.GetBlockWithName(myScript.RemoteControllerName);
-            timerForAIToBase = (IMyTimerBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.TimerToBaseName);
-            timerForAIFromBase = (IMyTimerBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.TimerFromBaseName);
-            remoteControl.ControlThrusters = true;
+            FlightMovement = (IMyFlightMovementBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.FlightControllerName);
+            RemoteControl = (IMyRemoteControl)myScript.GridTerminalSystem.GetBlockWithName(myScript.RemoteControllerName);
+            TimerForAIToBase = (IMyTimerBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.TimerToBaseName);
+            TimerForAIFromBase = (IMyTimerBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.TimerFromBaseName);
+            RemoteControl.ControlThrusters = true;
             MineCenterPosition = new Vector3D(0);
             CurrentMiningPosition = new Vector3D(0);
             BasePosition = new Vector3D(0);
             IsMiningComplete = false;
-            Vector3I sizeInBlocks = remoteControl.CubeGrid.Max - remoteControl.CubeGrid.Min + new Vector3I(1, 1, 1);
-            sizeInMeters = new Vector3D(sizeInBlocks) * remoteControl.CubeGrid.GridSize;
+            Vector3I sizeInBlocks = RemoteControl.CubeGrid.Max - RemoteControl.CubeGrid.Min + new Vector3I(1, 1, 1);
+            SizeInMeters = new Vector3D(sizeInBlocks) * RemoteControl.CubeGrid.GridSize;
 
-            gyros = new List<IMyGyro>();
-            myScript.GridTerminalSystem.GetBlocksOfType<IMyGyro>(gyros);
-            connectors = new List<IMyShipConnector>();
-            connectorsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ConnectorGroupName);
-            connectorsGroup.GetBlocksOfType(connectors);
-            storages = new List<IMyInventoryOwner>();
-            storagesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.StoragesGroupName);
-            storagesGroup.GetBlocksOfType(storages);
-            batteries = new List<IMyBatteryBlock>();
-            batteriesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.BatteriesGroupName);
-            batteriesGroup.GetBlocksOfType(batteries);
-            tanks = new List<IMyGasTank>();
-            tanksGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.TanksGroupName);
-            tanksGroup.GetBlocksOfType(tanks);
-            drills = new List<IMyShipDrill>();
-            drillsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.DrillsGroupName);
-            drillsGroup.GetBlocksOfType(drills);
+            Gyros = new List<IMyGyro>();
+            myScript.GridTerminalSystem.GetBlocksOfType<IMyGyro>(Gyros);
+            Connectors = new List<IMyShipConnector>();
+            ConnectorsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ConnectorGroupName);
+            ConnectorsGroup.GetBlocksOfType(Connectors);
+            Storages = new List<IMyInventoryOwner>();
+            StoragesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.StoragesGroupName);
+            StoragesGroup.GetBlocksOfType(Storages);
+            Batteries = new List<IMyBatteryBlock>();
+            BatteriesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.BatteriesGroupName);
+            BatteriesGroup.GetBlocksOfType(Batteries);
+            Tanks = new List<IMyGasTank>();
+            TanksGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.TanksGroupName);
+            TanksGroup.GetBlocksOfType(Tanks);
+            Drills = new List<IMyShipDrill>();
+            DrillsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.DrillsGroupName);
+            DrillsGroup.GetBlocksOfType(Drills);
 
             //Инциализация двигателей по направлениям
             Matrix RemConMatrix = new Matrix();
-            remoteControl.Orientation.GetMatrix(out RemConMatrix);
+            RemoteControl.Orientation.GetMatrix(out RemConMatrix);
             Matrix ThrMatrix = new Matrix();
             List<IMyThrust> ThrTemp = new List<IMyThrust>();
             myScript.GridTerminalSystem.GetBlocksOfType<IMyThrust>(ThrTemp);
@@ -307,37 +327,37 @@ public sealed class Program : MyGridProgram
                 thr.Orientation.GetMatrix(out ThrMatrix);
                 if (ThrMatrix.Forward == RemConMatrix.Backward)
                 {
-                    thrForward.Add(thr);
-                    forwardThrustEff += thr.MaxEffectiveThrust;
+                    ThrForward.Add(thr);
+                    ForwardThrustEff += thr.MaxEffectiveThrust;
                 }
                 else if (ThrMatrix.Forward == RemConMatrix.Forward)
                 {
-                    thrBackward.Add(thr);
-                    backwardThrustEff += thr.MaxEffectiveThrust;
+                    ThrBackward.Add(thr);
+                    BackwardThrustEff += thr.MaxEffectiveThrust;
                 }
                 else if (ThrMatrix.Forward == RemConMatrix.Left)
                 {
-                    thrRight.Add(thr);
-                    rightThrustEff += thr.MaxEffectiveThrust;
+                    ThrRight.Add(thr);
+                    RightThrustEff += thr.MaxEffectiveThrust;
                 }
                 else if (ThrMatrix.Forward == RemConMatrix.Right)
                 {
-                    thrLeft.Add(thr);
-                    leftThrustEff += thr.MaxEffectiveThrust;
+                    ThrLeft.Add(thr);
+                    LeftThrustEff += thr.MaxEffectiveThrust;
                 }
                 else if (ThrMatrix.Forward == RemConMatrix.Down)
                 {
-                    thrUp.Add(thr);
-                    upThrustEff += thr.MaxEffectiveThrust;
+                    ThrUp.Add(thr);
+                    UpThrustEff += thr.MaxEffectiveThrust;
                 }
                 else if (ThrMatrix.Forward == RemConMatrix.Up)
                 {
-                    thrDown.Add(thr);
-                    downThrustEff += thr.MaxEffectiveThrust;
+                    ThrDown.Add(thr);
+                    DownThrustEff += thr.MaxEffectiveThrust;
                 }
             }
 
-            remoteControl.TryGetPlanetPosition(out PlanetCenter);
+            RemoteControl.TryGetPlanetPosition(out PlanetCenter);
 
             #endregion
         }
@@ -354,6 +374,7 @@ public sealed class Program : MyGridProgram
             {
                 if (IsGridHorizontallyAligned)
                 {
+                    
                     SetDrillsEnabled(true);
 
                     var currentValidShaft = GetCurrentShaft();
@@ -363,23 +384,17 @@ public sealed class Program : MyGridProgram
                     }
 
                     var speedLimit = myScript.MiningSpeedLimit;
-                    //double elevationSurface;
-                    //remoteControl.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationSurface);
-                    //if (elevationSurface - sizeInMeters.Y > 2) // Увеличение скорости, если находимся больше, чем в 2 метрах над поверхностью
-                    //{
-                    //    speedLimit *= 10;
-                    //}
-                    Vector3D linearVelocity = remoteControl.GetShipVelocities().LinearVelocity;
-                    if (linearVelocity.Length() > maxSpeed)
+                    double elevationSurface;
+                    RemoteControl.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationSurface);
+                    if (elevationSurface - SizeInMeters.Y > myScript.AboveGroundSpeedHeight) // Увеличение скорости, если находимся больше, чем в AboveGroundSpeedHeight метрах над поверхностью
                     {
-                        maxSpeed = linearVelocity.Length();
-                        textPanel.WriteText($"maxSpeed = {maxSpeed}");
+                        speedLimit *= myScript.AboveGroundSpeedMultiplier;
                     }
 
                     if (MovementOnVectorLinear(CurrentMiningPosition, speedLimit, true))
                     {
                         currentValidShaft.isFinished = true;
-                        CurrentMiningPosition = currentValidShaft.startCoords;
+                        IsMovingIntoShaft = false;
 
                         SetDrillsEnabled(false);
                         SetGyrosOverride(false);
@@ -394,7 +409,7 @@ public sealed class Program : MyGridProgram
                 var currentValidShaft = GetCurrentShaft();
                 if (!currentValidShaft.startCoords.IsZero())
                 {
-                    CurrentMiningPosition = currentValidShaft.startCoords;
+                    currentValidShaft.currDepthCoords = RemoteControl.GetPosition();
                 }
                 SetDrillsEnabled(false);
                 SetGyrosOverride(false);
@@ -431,18 +446,20 @@ public sealed class Program : MyGridProgram
         /// </summary>
         internal void ParkingToBase()
         {
-            if (!flightMovement.Enabled)
+            if (!FlightMovement.Enabled)
             {
-                flightMovement.Enabled = true;
-                flightMovement.AlignToPGravity = true;
+                FlightMovement.Enabled = true;
+                FlightMovement.AlignToPGravity = true;
                 SetConnectorsEnabled(true);
-                timerForAIToBase.Trigger();
+                TimerForAIToBase.Trigger();
             }
-            if (CheckStorageAndTanksAndBatteries() && CheckStoragesInPercent() == 0 
-                && CheckTanksInPercent() > myScript.TanksCapacityThreshold * 4 
-                && flightMovement.Enabled)
+            if (CheckBatteriesInPercent() > 100 - myScript.BatteriesCapacityThreshold
+                && CheckTanksInPercent() > 100 - myScript.TanksCapacityThreshold
+                && CheckStoragesInPercent() == 0
+                && FlightMovement.Enabled
+                && Connectors.Any(c => c.Status == MyShipConnectorStatus.Connected))
             {
-                flightMovement.Enabled = false;
+                FlightMovement.Enabled = false;
                 SetStatus("exitFromBase");
             }
         }
@@ -456,29 +473,29 @@ public sealed class Program : MyGridProgram
                 SetStatus("Mining complete!");
                 myScript.Runtime.UpdateFrequency = UpdateFrequency.None;
             }
-            else if (!flightMovement.Enabled)
+            else if (!FlightMovement.Enabled)
             {
                 SetBatteriesRecharge(false);
                 SetTanksStockpile(false);
                 SetConnectorsEnabled(false);
-                flightMovement.Enabled = true;
-                flightMovement.AlignToPGravity = true;
-                timerForAIFromBase.Trigger();
+                FlightMovement.Enabled = true;
+                FlightMovement.AlignToPGravity = true;
+                TimerForAIFromBase.Trigger();
             }
 
-            if (!flightMovement.IsAutoPilotEnabled)
+            if (!FlightMovement.IsAutoPilotEnabled)
             {
                 if (BasePosition.IsZero())
                 {
-                    BasePosition = remoteControl.GetPosition();
+                    BasePosition = RemoteControl.GetPosition();
                 }
                 if (ForwardVector.IsZero())
                 {
                     ForwardVector = Vector3D.Normalize(Vector3D.Reject(
-                        remoteControl.WorldMatrix.Forward, 
-                        Vector3D.Normalize(remoteControl.GetNaturalGravity())));
+                        RemoteControl.WorldMatrix.Forward, 
+                        Vector3D.Normalize(RemoteControl.GetNaturalGravity())));
                 }
-                flightMovement.Enabled = false;
+                FlightMovement.Enabled = false;
                 SetConnectorsEnabled(true);
                 SetStatus("movingToMine");
             }
@@ -498,7 +515,7 @@ public sealed class Program : MyGridProgram
                         if (MineCenterPosition.IsZero())
                         {
                             List<MyWaypointInfo> myWaypoints = new List<MyWaypointInfo>();
-                            remoteControl.GetWaypointInfo(myWaypoints);
+                            RemoteControl.GetWaypointInfo(myWaypoints);
                             if (myWaypoints.Count > 0)
                             {
                                 MineCenterPosition = myWaypoints[0].Coords;
@@ -522,6 +539,7 @@ public sealed class Program : MyGridProgram
                 if (MovementOnVectorArchwise(CurrentMiningPosition, myScript.SurfaceSpeedLimit))
                 {
                     SetGyrosOverride(false);
+                    IsMovingIntoShaft = true;
                     SetStatus("movingToCurrentShaft");
                 }
             }
@@ -539,55 +557,51 @@ public sealed class Program : MyGridProgram
         internal void MovingToCurrentShaft()
         {
             KeepStraightDirection();
-            if (CheckStorageAndTanksAndBatteries())
+            if (CheckStorageAndTanksAndBatteries() && !IsMiningComplete)
             {
                 if (IsGridHorizontallyAligned)
                 {
                     if (MineCenterPosition.IsZero())
                     {
                         List<MyWaypointInfo> myWaypoints = new List<MyWaypointInfo>();
-                        remoteControl.GetWaypointInfo(myWaypoints);
+                        RemoteControl.GetWaypointInfo(myWaypoints);
                         if (myWaypoints.Count > 0)
                         {
                             MineCenterPosition = myWaypoints[0].Coords;
                         }
                         else
                         {
-                            MineCenterPosition = remoteControl.GetPosition();
+                            MineCenterPosition = RemoteControl.GetPosition();
                         }
                     }
 
-                    if (shaftMarks.Count == 0)
+                    if (ShaftMarks.Count == 0)
                     {
                         if (ForwardVector.IsZero())
                         {
                             ForwardVector = Vector3D.Normalize(Vector3D.Reject(
-                                remoteControl.WorldMatrix.Forward,
-                                Vector3D.Normalize(remoteControl.GetNaturalGravity())));
+                                RemoteControl.WorldMatrix.Forward,
+                                Vector3D.Normalize(RemoteControl.GetNaturalGravity())));
                         }
-                        CreateShaftMarks(ref shaftMarks, MineCenterPosition, myScript.ShaftM, myScript.ShaftN);
+                        CreateShaftMarks(ref ShaftMarks, MineCenterPosition, myScript.ShaftM, myScript.ShaftN);
                     }
                     var currentValidShaft = GetCurrentShaft();
-                    if (!currentValidShaft.startCoords.IsZero())
+                    if (!currentValidShaft.currDepthCoords.IsZero())
                     {
-                        CurrentMiningPosition = currentValidShaft.startCoords;
+                        CurrentMiningPosition = currentValidShaft.currDepthCoords;
                     }
-                    else if (MovementOnVectorLinear(CurrentMiningPosition, myScript.MiningSpeedLimit * 10, false))
+                    else
                     {
                         IsMiningComplete = true;
-                        SetGyrosOverride(false);
-                        StopAllGyros();
-                        StopAllThrusters();
-                        SetStatus("returnToBase");
                     }
-                    if (MovementOnVectorLinear(CurrentMiningPosition, myScript.MiningSpeedLimit * 10, false))
+                    if (MovementOnVectorLinear(CurrentMiningPosition, myScript.MiningSpeedLimit * myScript.AboveGroundSpeedMultiplier, IsMovingIntoShaft))
                     {
+                        IsMovingIntoShaft = true;
                         SetGyrosOverride(false);
                         StopAllGyros();
                         StopAllThrusters();
                         SetStatus("mining");
                     }
-                    //PrintVector(CurrentMiningPosition, "currPos", false);
                 }
             }
             else
@@ -597,7 +611,11 @@ public sealed class Program : MyGridProgram
                 {
                     CurrentMiningPosition = currentValidShaft.startCoords;
                 }
-                if (MovementOnVectorLinear(CurrentMiningPosition, myScript.MiningSpeedLimit * 10, false))
+                else
+                {
+                    CurrentMiningPosition = MineCenterPosition;
+                }
+                if (MovementOnVectorLinear(CurrentMiningPosition, myScript.MiningSpeedLimit * myScript.AboveGroundSpeedMultiplier, false))
                 {
                     SetGyrosOverride(false);
                     StopAllGyros();
@@ -616,35 +634,32 @@ public sealed class Program : MyGridProgram
         /// </summary>
         private void KeepStraightDirection()
         {
-            Vector3D gravVectorNorm = Vector3D.Normalize(remoteControl.GetNaturalGravity());
-            Vector3D axisGrav = gravVectorNorm.Cross(remoteControl.WorldMatrix.Down);
-            if (axisGrav.Dot(remoteControl.WorldMatrix.Down) < 0)
+            Vector3D gravVectorNorm = Vector3D.Normalize(RemoteControl.GetNaturalGravity());
+            Vector3D axisGrav = gravVectorNorm.Cross(RemoteControl.WorldMatrix.Down);
+            if (axisGrav.Dot(RemoteControl.WorldMatrix.Down) < 0)
             {
                 axisGrav = Vector3D.Normalize(axisGrav);
             }
 
-            Vector3D axisForward = ForwardVector.Cross(remoteControl.WorldMatrix.Forward);
-            if (ForwardVector.Dot(remoteControl.WorldMatrix.Forward) < 0)
+            Vector3D currentForwardVector = Vector3D.Reject(ForwardVector, gravVectorNorm);
+            Vector3D axisForward = currentForwardVector.Cross(RemoteControl.WorldMatrix.Forward);
+            if (currentForwardVector.Dot(RemoteControl.WorldMatrix.Forward) < 0)
             {
                 axisForward = Vector3D.Normalize(axisForward);
             }
 
-            float pitch = (float)axisGrav.Dot(remoteControl.WorldMatrix.Right);
-            float roll = (float)axisGrav.Dot(remoteControl.WorldMatrix.Backward);
-            float yaw = (float)axisForward.Dot(remoteControl.WorldMatrix.Up);
+            float pitch = (float)axisGrav.Dot(RemoteControl.WorldMatrix.Right);
+            float roll = (float)axisGrav.Dot(RemoteControl.WorldMatrix.Backward);
+            float yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up);
 
-            //myScript.Echo($"axisGrav = {axisGrav:F}");
-            //myScript.Echo($"axisGravDot = {axisGrav.Dot(remoteControl.WorldMatrix.Down):F}");
-            //myScript.Echo($"pitch = {pitch:F}");
-            //myScript.Echo($"roll = {roll:F}");
-
-            foreach (IMyGyro gyro in gyros)
+            foreach (IMyGyro gyro in Gyros)
             {
                 gyro.GyroOverride = true;
-                gyro.Pitch = pitch * (myScript.GyroMult / 2);
-                gyro.Roll = roll * (myScript.GyroMult / 2);
-                gyro.Yaw = yaw * (myScript.GyroMult / 2);
+                gyro.Pitch = pitch * myScript.GyroMult;
+                gyro.Roll = roll * myScript.GyroMult;
+                gyro.Yaw = yaw * myScript.GyroMult;
             }
+            myScript.Echo($"axisGrav = {axisGrav.Length():F} axisForward = {axisForward.Length():F}");
             IsGridHorizontallyAligned = axisGrav.Length() + axisForward.Length() < 0.01;
         }
         /// <summary>
@@ -653,7 +668,7 @@ public sealed class Program : MyGridProgram
         /// <param name="overrideControls">Параметр, включающий или выключающий перехват управления</param>
         private void SetGyrosOverride(bool overrideControls)
         {
-            foreach (IMyGyro gyro in gyros)
+            foreach (IMyGyro gyro in Gyros)
             {
                 gyro.GyroOverride = overrideControls;
             }
@@ -663,7 +678,7 @@ public sealed class Program : MyGridProgram
         /// </summary>
         private void StopAllGyros()
         {
-            foreach (IMyGyro gyro in gyros)
+            foreach (IMyGyro gyro in Gyros)
             {
                 gyro.Pitch = 0;
                 gyro.Roll = 0;
@@ -683,17 +698,15 @@ public sealed class Program : MyGridProgram
             }
         }
         /// <summary>
-        /// Постепенно увеличивает значение тяги двигателям
+        /// Устанавливает значение тяги двигателям в Ньютонах
         /// </summary>
         /// <param name="list">Лист двигателей</param>
-        private void SetTrustersGradually(List<IMyThrust> list)
+        /// <param name="value">Значение тяги</param>
+        private void SetTrustersNewtons(List<IMyThrust> list, float value)
         {
-            var gravL = remoteControl.GetNaturalGravity().Length();
-            textPanel.WriteText($"gravL = {gravL}\n", false);
-            textPanel.WriteText($"gravL/400 = {gravL/400}\n", true);
             foreach (IMyThrust thrust in list)
             {
-                thrust.ThrustOverridePercentage += 0.025f;
+                thrust.ThrustOverride = value / list.Count;
             }
         }
         /// <summary>
@@ -701,12 +714,12 @@ public sealed class Program : MyGridProgram
         /// </summary>
         private void StopAllThrusters()
         {
-            SetTrustersPercentage(thrForward, 0);
-            SetTrustersPercentage(thrBackward, 0);
-            SetTrustersPercentage(thrRight, 0);
-            SetTrustersPercentage(thrLeft, 0);
-            SetTrustersPercentage(thrUp, 0);
-            SetTrustersPercentage(thrDown, 0);
+            SetTrustersPercentage(ThrForward, 0);
+            SetTrustersPercentage(ThrBackward, 0);
+            SetTrustersPercentage(ThrRight, 0);
+            SetTrustersPercentage(ThrLeft, 0);
+            SetTrustersPercentage(ThrUp, 0);
+            SetTrustersPercentage(ThrDown, 0);
         }
 
         /// <summary>
@@ -719,80 +732,97 @@ public sealed class Program : MyGridProgram
         private bool MovementOnVectorLinear(Vector3D target, float speedLimit, bool horizontalAligmentFirst)
         {
             
-            remoteControl.DampenersOverride = true;
-            Vector3D linearVelocity = remoteControl.GetShipVelocities().LinearVelocity;
+            RemoteControl.DampenersOverride = true;
+            Vector3D linearVelocity = RemoteControl.GetShipVelocities().LinearVelocity;
             if (linearVelocity.Length() < speedLimit)
             {
 
-                Vector3D pathVector = target - remoteControl.GetPosition();
-                Vector3D pathVectorForward = remoteControl.WorldMatrix.Forward * pathVector.Dot(remoteControl.WorldMatrix.Forward);
-                float ForwardScalar = (float)Vector3D.Normalize(pathVectorForward).Dot(remoteControl.WorldMatrix.Forward);
+                Vector3D pathVector = target - RemoteControl.GetPosition();
+                Vector3D pathVectorForward = RemoteControl.WorldMatrix.Forward * pathVector.Dot(RemoteControl.WorldMatrix.Forward);
+                float ForwardScalar = (float)Vector3D.Normalize(pathVectorForward).Dot(RemoteControl.WorldMatrix.Forward);
 
-                Vector3D pathVectorRight = remoteControl.WorldMatrix.Right * pathVector.Dot(remoteControl.WorldMatrix.Right);
-                float RightScalar = (float)Vector3D.Normalize(pathVectorRight).Dot(remoteControl.WorldMatrix.Right);
+                Vector3D pathVectorRight = RemoteControl.WorldMatrix.Right * pathVector.Dot(RemoteControl.WorldMatrix.Right);
+                float RightScalar = (float)Vector3D.Normalize(pathVectorRight).Dot(RemoteControl.WorldMatrix.Right);
 
-                Vector3D pathVectorUp = remoteControl.WorldMatrix.Up * pathVector.Dot(remoteControl.WorldMatrix.Up);
-                float UpScalar = (float)Vector3D.Normalize(pathVectorUp).Dot(remoteControl.WorldMatrix.Up);
+                Vector3D pathVectorUp = RemoteControl.WorldMatrix.Up * pathVector.Dot(RemoteControl.WorldMatrix.Up);
+                float UpScalar = (float)Vector3D.Normalize(pathVectorUp).Dot(RemoteControl.WorldMatrix.Up);
 
-                if (linearVelocity.Length() < myScript.AcceptableMovingAccuracy && (pathVectorForward.Length() + pathVectorRight.Length() + pathVectorUp.Length()) / 3 < myScript.AcceptableMovingAccuracy)
+                if (linearVelocity.Length() < myScript.AcceptableMovingAccuracy / 2 && (pathVectorForward.Length() + pathVectorRight.Length() + pathVectorUp.Length()) / 3 < myScript.AcceptableMovingAccuracy)
                 {
                     StopAllThrusters();
                     return true;
                 }
 
-                float shipMass = remoteControl.CalculateShipMass().PhysicalMass;
+                float shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
 
-                Vector3D velocityForward = remoteControl.WorldMatrix.Forward * linearVelocity.Dot(remoteControl.WorldMatrix.Forward);
-                Vector3D velocityRight = remoteControl.WorldMatrix.Right * linearVelocity.Dot(remoteControl.WorldMatrix.Right);
-                Vector3D velocityUp = remoteControl.WorldMatrix.Up * linearVelocity.Dot(remoteControl.WorldMatrix.Up);
+                Vector3D velocityForward = RemoteControl.WorldMatrix.Forward * linearVelocity.Dot(RemoteControl.WorldMatrix.Forward);
+                Vector3D velocityRight = RemoteControl.WorldMatrix.Right * linearVelocity.Dot(RemoteControl.WorldMatrix.Right);
+                Vector3D velocityUp = RemoteControl.WorldMatrix.Up * linearVelocity.Dot(RemoteControl.WorldMatrix.Up);
 
-                float forwardVelScalar = (float)velocityForward.Dot(remoteControl.WorldMatrix.Forward);
-                float stopDistForward = (float)(0.5 * shipMass * Math.Pow(forwardVelScalar, 2) / (forwardVelScalar > 0 ? backwardThrustEff : forwardThrustEff));
-                float rightVelScalar = (float)velocityRight.Dot(remoteControl.WorldMatrix.Right);
-                float stopDistRight = (float)(0.5 * shipMass * Math.Pow(rightVelScalar, 2) / (rightVelScalar > 0 ? leftThrustEff : rightThrustEff));
-                float upVelScalar = (float)velocityUp.Dot(remoteControl.WorldMatrix.Up);
-                float stopDistUp = (float)(0.5 * shipMass * Math.Pow(upVelScalar, 2) / (upVelScalar > 0 ? downThrustEff : upThrustEff));
+                float forwardVelScalar = (float)velocityForward.Dot(RemoteControl.WorldMatrix.Forward);
+                float stopDistForward = (float)(0.5 * shipMass * Math.Pow(forwardVelScalar, 2) / (forwardVelScalar > 0 ? BackwardThrustEff : ForwardThrustEff));
+                float rightVelScalar = (float)velocityRight.Dot(RemoteControl.WorldMatrix.Right);
+                float stopDistRight = (float)(0.5 * shipMass * Math.Pow(rightVelScalar, 2) / (rightVelScalar > 0 ? LeftThrustEff : RightThrustEff));
+                float upVelScalar = (float)velocityUp.Dot(RemoteControl.WorldMatrix.Up);
+                float stopDistUp = (float)(0.5 * shipMass * Math.Pow(upVelScalar, 2) / (upVelScalar > 0 ? 
+                                                                                            DownThrustEff + (shipMass * RemoteControl.GetNaturalGravity().Length()) :
+                                                                                            UpThrustEff - (shipMass * RemoteControl.GetNaturalGravity().Length())));
 
-                LCD.WriteText($"forwardSc = {ForwardScalar}\n", false);
-                LCD.WriteText($"rightSc = {RightScalar}\n", true);
-                LCD.WriteText($"upSc = {UpScalar}\n", true);
-                LCD.WriteText($"stopDistForward = {stopDistForward}\n", true);
-                LCD.WriteText($"stopDistRight = {stopDistRight}\n", true);
-                LCD.WriteText($"stopDistUp = {stopDistUp}\n", true);
-
+                //LCD.WriteText($"forwardSc = {ForwardScalar:F}\n", false);
+                //LCD.WriteText($"rightSc = {RightScalar:F}\n", true);
+                //LCD.WriteText($"upSc = {UpScalar:F}\n", true);
+                //LCD.WriteText($"stopDistForward = {stopDistForward:F}\n", true);
+                //LCD.WriteText($"stopDistRight = {stopDistRight:F}\n", true);
+                //LCD.WriteText($"stopDistUp = {stopDistUp:F}\n", true);
 
                 if (pathVectorForward.Length() > stopDistForward && pathVectorForward.Length() > myScript.AcceptableMovingAccuracy
                     && (horizontalAligmentFirst || pathVectorUp.Length() < myScript.AcceptableMovingAccuracy))
                 {
-                    SetAxisThrustsByScalar(thrForward, thrBackward, ForwardScalar);
+                    SetAxisThrustsByScalar(ThrForward, ThrBackward, ForwardScalar);
                 }
                 else
                 {
-                    SetTrustersPercentage(thrForward, 0);
-                    SetTrustersPercentage(thrBackward, 0);
+                    SetTrustersPercentage(ThrForward, 0);
+                    SetTrustersPercentage(ThrBackward, 0);
                 }
 
                 if (pathVectorRight.Length() > stopDistRight && pathVectorRight.Length() > myScript.AcceptableMovingAccuracy
                     && (horizontalAligmentFirst || pathVectorUp.Length() < myScript.AcceptableMovingAccuracy))
                 {
-                    SetAxisThrustsByScalar(thrRight, thrLeft, RightScalar);
+                    SetAxisThrustsByScalar(ThrRight, ThrLeft, RightScalar);
                 }
                 else
                 {
-                    SetTrustersPercentage(thrRight, 0);
-                    SetTrustersPercentage(thrLeft, 0);
+                    SetTrustersPercentage(ThrRight, 0);
+                    SetTrustersPercentage(ThrLeft, 0);
                 }
 
                 if (pathVectorUp.Length() > stopDistUp && pathVectorUp.Length() > myScript.AcceptableMovingAccuracy
                     && (!horizontalAligmentFirst || (pathVectorForward.Length() < myScript.AcceptableMovingAccuracy
                     && pathVectorRight.Length() < myScript.AcceptableMovingAccuracy)))
                 {
-                    SetAxisThrustsByScalar(thrUp, thrDown, UpScalar);
+                    if (UpScalar > 0)
+                    {
+                        SetTrustersPercentage(ThrUp, 1);
+                    }
+                    else
+                    {
+                        float keepElevationT = (float)(shipMass * RemoteControl.GetNaturalGravity().Length());
+                        if (-upVelScalar < speedLimit * 0.95f && -upVelScalar > speedLimit)
+                        {
+                            SetTrustersNewtons(ThrUp, keepElevationT);
+                        }
+                        else
+                        {
+                            float coeff = 10.555f / (speedLimit + 11.11f); // Расчет обратно-пропорционального коэффициента
+                            SetTrustersNewtons(ThrUp, keepElevationT * coeff);
+                        }
+                    }
                 }
                 else
                 {
-                    SetTrustersPercentage(thrUp, 0);
-                    SetTrustersPercentage(thrDown, 0);
+                    SetTrustersPercentage(ThrUp, 0);
+                    SetTrustersPercentage(ThrDown, 0);
                 }
             }
             else
@@ -809,97 +839,97 @@ public sealed class Program : MyGridProgram
         /// <returns>true - если достиг конечной точки, false в остальных случаях</returns>
         private bool MovementOnVectorArchwise(Vector3D target, float speedLimit)
         {
-            Vector3D currentPos = remoteControl.GetPosition();
-            if (!arcInitialized || !arcTargetPos.Equals(target))
+            Vector3D currentPos = RemoteControl.GetPosition();
+            if (!ArcInitialized || !ArcTargetPos.Equals(target))
             {
-                arcStartPos = currentPos;
-                arcTargetPos = target;
-                arcIsAscending = true;
-                arcInitialized = true;
+                ArcStartPos = currentPos;
+                ArcTargetPos = target;
+                ArcIsAscending = true;
+                ArcInitialized = true;
 
-                Vector3D midPoint = (arcStartPos + arcTargetPos) / 2.0;
+                Vector3D midPoint = (ArcStartPos + ArcTargetPos) / 2.0;
                 Vector3D planetUp = Vector3D.Normalize(midPoint - PlanetCenter);
 
                 double elevationAboveSeaLevel = 0;
-                remoteControl.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out elevationAboveSeaLevel);
+                RemoteControl.TryGetPlanetElevation(MyPlanetElevation.Sealevel, out elevationAboveSeaLevel);
 
-                double currentDistFromCenter = (arcStartPos - PlanetCenter).Length();
+                double currentDistFromCenter = (ArcStartPos - PlanetCenter).Length();
                 double seaLevelRadius = currentDistFromCenter - elevationAboveSeaLevel;
                 double calculatedArcHeight = elevationAboveSeaLevel + ((target - currentPos).Length() * myScript.ArcHeightMult) + Math.Abs(((target - currentPos).Dot(planetUp)) * 2);
                 double arcHeight = calculatedArcHeight > myScript.ArcHeightMaximum ? myScript.ArcHeightMaximum : calculatedArcHeight;
                 double apexRadius = seaLevelRadius + arcHeight;
-                arcApexPos = PlanetCenter + planetUp * apexRadius;
+                ArcApexPos = PlanetCenter + planetUp * apexRadius;
 
-                Vector3D startToApex = arcApexPos - arcStartPos;
-                Vector3D startToTarget = arcTargetPos - arcStartPos;
-                arcPlaneNormal = Vector3D.Normalize(Vector3D.Cross(startToApex, startToTarget));
+                Vector3D startToApex = ArcApexPos - ArcStartPos;
+                Vector3D startToTarget = ArcTargetPos - ArcStartPos;
+                ArcPlaneNormal = Vector3D.Normalize(Vector3D.Cross(startToApex, startToTarget));
 
-                if (arcPlaneNormal.LengthSquared() < 0.001)
+                if (ArcPlaneNormal.LengthSquared() < 0.001)
                 {
-                    arcPlaneNormal = Vector3D.Normalize(midPoint - PlanetCenter);
+                    ArcPlaneNormal = Vector3D.Normalize(midPoint - PlanetCenter);
                 }
             }
 
-            double distToTarget = Vector3D.Distance(currentPos, arcTargetPos);
-            Vector3D linearVelocity = remoteControl.GetShipVelocities().LinearVelocity;
+            double distToTarget = Vector3D.Distance(currentPos, ArcTargetPos);
+            Vector3D linearVelocity = RemoteControl.GetShipVelocities().LinearVelocity;
 
             if (distToTarget < myScript.AcceptableMovingAccuracy * 4 && linearVelocity.Length() <= 5)
             {
                 StopAllThrusters();
                 SetGyrosOverride(false);
                 StopAllGyros();
-                arcInitialized = false;
-                arcIsAscending = true;
+                ArcInitialized = false;
+                ArcIsAscending = true;
                 return true;
             }
-            Vector3D gravNorm = Vector3D.Normalize(remoteControl.GetNaturalGravity());
+            Vector3D gravNorm = Vector3D.Normalize(RemoteControl.GetNaturalGravity());
             Vector3D rejTarget = Vector3D.Reject(target - currentPos, gravNorm);
-            Vector3D rejApex = Vector3D.Reject(arcApexPos - currentPos, gravNorm);
-            arcIsAscending = rejApex.Dot(Vector3D.Normalize(rejTarget)) > 0 && arcIsAscending;
+            Vector3D rejApex = Vector3D.Reject(ArcApexPos - currentPos, gravNorm);
+            ArcIsAscending = rejApex.Dot(Vector3D.Normalize(rejTarget)) > 0 && ArcIsAscending;
 
             OrientShipForArc();
 
-            Vector3D currentTarget = arcIsAscending ? arcApexPos : arcTargetPos;
+            Vector3D currentTarget = ArcIsAscending ? ArcApexPos : ArcTargetPos;
             Vector3D toTarget = currentTarget - currentPos;
             double distToCurrentTarget = toTarget.Length();
             toTarget.Normalize();
 
-            Vector3D shipUp = remoteControl.WorldMatrix.Up;
+            Vector3D shipUp = RemoteControl.WorldMatrix.Up;
             double speedAlongPath = Vector3D.Dot(linearVelocity, shipUp);
-            double shipMass = remoteControl.CalculateShipMass().PhysicalMass;
+            double shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
             double stopDist = 0;
             double availableThrust = 0;
 
             if (speedAlongPath > 0)
             {
 
-                availableThrust = downThrustEff - (shipMass * (remoteControl.GetNaturalGravity().Dot(Vector3D.Normalize(linearVelocity))));
+                availableThrust = DownThrustEff - (shipMass * (RemoteControl.GetNaturalGravity().Dot(Vector3D.Normalize(linearVelocity))));
 
                 stopDist = (0.5 * shipMass * speedAlongPath * speedAlongPath) / availableThrust;
             }
             else
             {
-                availableThrust = upThrustEff - (shipMass * (remoteControl.GetNaturalGravity().Dot(Vector3D.Normalize(linearVelocity))));
+                availableThrust = UpThrustEff - (shipMass * (RemoteControl.GetNaturalGravity().Dot(Vector3D.Normalize(linearVelocity))));
                 stopDist = ((0.5 * shipMass * speedAlongPath * speedAlongPath) / availableThrust) + (linearVelocity.Length() * 0.03);
                 
             }
             bool shouldAccelerate = distToCurrentTarget > stopDist && Math.Abs(linearVelocity.Length()) < speedLimit;
 
-            if (arcIsAscending)
+            if (ArcIsAscending)
             {
                 if (shouldAccelerate && speedAlongPath < speedLimit)
                 {
-                    SetTrustersPercentage(thrUp, 1);
-                    SetTrustersPercentage(thrDown, 0);
+                    SetTrustersPercentage(ThrUp, 1);
+                    SetTrustersPercentage(ThrDown, 0);
                 }
                 else
                 {
                     if (speedAlongPath > 0)
                     {
-                        if (downThrustEff > 0)
+                        if (DownThrustEff > 0)
                         {
-                            SetTrustersPercentage(thrDown, 1);
-                            SetTrustersPercentage(thrUp, 0);
+                            SetTrustersPercentage(ThrDown, 1);
+                            SetTrustersPercentage(ThrUp, 0);
                         }
                         else
                         {
@@ -916,10 +946,10 @@ public sealed class Program : MyGridProgram
             {
                 if (shouldAccelerate && Math.Abs(speedAlongPath) < speedLimit)
                 {
-                    if (downThrustEff > 0)
+                    if (DownThrustEff > 0)
                     {
-                        SetTrustersPercentage(thrDown, 1);
-                        SetTrustersPercentage(thrUp, 0);
+                        SetTrustersPercentage(ThrDown, 1);
+                        SetTrustersPercentage(ThrUp, 0);
                     }
                     else
                     {
@@ -930,8 +960,8 @@ public sealed class Program : MyGridProgram
                 {
                     if (speedAlongPath < 0)
                     {
-                        SetTrustersPercentage(thrUp, 1);
-                        SetTrustersPercentage(thrDown, 0);
+                        SetTrustersPercentage(ThrUp, 1);
+                        SetTrustersPercentage(ThrDown, 0);
                     }
                     else
                     {
@@ -948,26 +978,26 @@ public sealed class Program : MyGridProgram
         /// <returns>Возвращает true, если выравнивание завершено</returns>
         private bool OrientShipForArc()
         {
-            Vector3D targetPoint = arcIsAscending ? arcApexPos : arcTargetPos;
-            Vector3D toTargetNorm = Vector3D.Normalize(targetPoint - remoteControl.GetPosition());
-            Vector3D axisTarget = toTargetNorm.Cross(remoteControl.WorldMatrix.Up);
-            if (!arcIsAscending)
+            Vector3D targetPoint = ArcIsAscending ? ArcApexPos : ArcTargetPos;
+            Vector3D toTargetNorm = Vector3D.Normalize(targetPoint - RemoteControl.GetPosition());
+            Vector3D axisTarget = toTargetNorm.Cross(RemoteControl.WorldMatrix.Up);
+            if (!ArcIsAscending)
             {
                 axisTarget = -axisTarget;
             }
-            Vector3D forwardTargetVector = Vector3D.Normalize(Vector3D.Reject(arcTargetPos - remoteControl.GetPosition(), arcApexPos - remoteControl.GetPosition()));
-            Vector3D axisForward = forwardTargetVector.Cross(remoteControl.WorldMatrix.Forward);
-            if (forwardTargetVector.Dot(remoteControl.WorldMatrix.Forward) < 0)
+            Vector3D forwardTargetVector = Vector3D.Normalize(Vector3D.Reject(ArcTargetPos - RemoteControl.GetPosition(), ArcApexPos - RemoteControl.GetPosition()));
+            Vector3D axisForward = forwardTargetVector.Cross(RemoteControl.WorldMatrix.Forward);
+            if (forwardTargetVector.Dot(RemoteControl.WorldMatrix.Forward) < 0)
             {
                 axisForward = Vector3D.Normalize(axisForward);
             }
 
-            float pitch = (float)axisTarget.Dot(remoteControl.WorldMatrix.Right);
-            float roll = (float)axisTarget.Dot(remoteControl.WorldMatrix.Backward);
-            float yaw = (float)axisForward.Dot(remoteControl.WorldMatrix.Up);
+            float pitch = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Right);
+            float roll = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Backward);
+            float yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up);
             
 
-            foreach (IMyGyro gyro in gyros)
+            foreach (IMyGyro gyro in Gyros)
             {
                 gyro.GyroOverride = true;
                 gyro.Pitch = pitch * myScript.GyroMult;
@@ -976,16 +1006,6 @@ public sealed class Program : MyGridProgram
             }
 
             return pitch + roll + yaw < 0.001;
-        }
-
-
-        private void SetTrustersNewtons(List<IMyThrust> list, float value)
-        {
-            if (list.Count == 0) return;
-            foreach (IMyThrust thrust in list)
-            {
-                thrust.ThrustOverride = value / list.Count;
-            }
         }
         /// <summary>
         /// Устанавливает тягу группе двигателей определенной оси в зависимости от значения скаляра перемещения по этой оси
@@ -1027,7 +1047,7 @@ public sealed class Program : MyGridProgram
         {
             float maxFill = 0;
             float fill = 0;
-            foreach (IMyInventoryOwner storage in storages)
+            foreach (IMyInventoryOwner storage in Storages)
             {
                 fill += Convert.ToInt32(storage.GetInventory(0).CurrentVolume.RawValue);
                 maxFill += Convert.ToInt32(storage.GetInventory(0).MaxVolume.RawValue);
@@ -1043,7 +1063,7 @@ public sealed class Program : MyGridProgram
         {
             float H2_O2Count = 0;
             double H2_O2Filled = 0;
-            foreach (IMyGasTank gastank in tanks)
+            foreach (IMyGasTank gastank in Tanks)
             {
                 H2_O2Filled += gastank.FilledRatio * 100;
                 H2_O2Count++;
@@ -1059,7 +1079,7 @@ public sealed class Program : MyGridProgram
         {
             float maxCharge = 0;
             float charge = 0;
-            foreach (IMyBatteryBlock battery in batteries)
+            foreach (IMyBatteryBlock battery in Batteries)
             {
                 charge += battery.CurrentStoredPower;
                 maxCharge += battery.MaxStoredPower;
@@ -1081,7 +1101,7 @@ public sealed class Program : MyGridProgram
         /// <param name="enabled">Значение "Включено"</param>
         private void SetDrillsEnabled(bool enabled)
         {
-            foreach (IMyShipDrill drill in drills)
+            foreach (IMyShipDrill drill in Drills)
             {
                 drill.Enabled = enabled;
             }
@@ -1092,7 +1112,7 @@ public sealed class Program : MyGridProgram
         /// <param name="enabled">Значение "Включено"</param>
         private void SetConnectorsEnabled(bool enabled)
         {
-            foreach (IMyShipConnector con in connectors)
+            foreach (IMyShipConnector con in Connectors)
             {
                 con.Enabled = enabled;
             }
@@ -1103,7 +1123,7 @@ public sealed class Program : MyGridProgram
         /// <param name="enabled">Значение "Накопитель"</param>
         private void SetTanksStockpile(bool enabled)
         {
-            foreach (IMyGasTank gastank in tanks)
+            foreach (IMyGasTank gastank in Tanks)
             {
                 gastank.Stockpile = enabled;
             }
@@ -1114,7 +1134,7 @@ public sealed class Program : MyGridProgram
         /// <param name="recharge">Значение "Режим зарядки": true - Зарядка, false - Авто</param>
         private void SetBatteriesRecharge(bool recharge)
         {
-            foreach (IMyBatteryBlock battery in batteries)
+            foreach (IMyBatteryBlock battery in Batteries)
             {
                 battery.ChargeMode = recharge ? ChargeMode.Recharge : ChargeMode.Auto;
             }
@@ -1129,7 +1149,7 @@ public sealed class Program : MyGridProgram
         private void CreateShaftMarks(ref List<ShaftMark> shaftMarks, Vector3D initCoords, byte shaftM, byte shaftN)
         {
             double elevationSurface;
-            remoteControl.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationSurface);
+            RemoteControl.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationSurface);
 
             double depthMult = (elevationSurface / (PlanetCenter - initCoords).Length()) * 2;
 
@@ -1143,11 +1163,10 @@ public sealed class Program : MyGridProgram
                 for (int j = 0; j < shaftN; j++)
                 {
                     ShaftMark shaftMark = new ShaftMark();
-                    shaftMark.m = i;
-                    shaftMark.n = j;
                     shaftMark.isFinished = false;
-                    shaftMark.startCoords = initCoords + ((i - ((float)(shaftM - 1) / 2)) * (sizeInMeters.X + myScript.MiningMargin)) * remoteControl.WorldMatrix.Right
-                                                + ((j - ((float)(shaftN - 1) / 2)) * (sizeInMeters.Z + myScript.MiningMargin)) * remoteControl.WorldMatrix.Forward;
+                    shaftMark.startCoords = initCoords + ((i - ((float)(shaftM - 1) / 2)) * (SizeInMeters.X + myScript.MiningMargin)) * RemoteControl.WorldMatrix.Right
+                                                + ((j - ((float)(shaftN - 1) / 2)) * (SizeInMeters.Z + myScript.MiningMargin)) * RemoteControl.WorldMatrix.Forward;
+                    shaftMark.currDepthCoords = shaftMark.startCoords;
                     shaftMark.endCoords = ((PlanetCenter - shaftMark.startCoords) * depthMult) + shaftMark.startCoords;
                     shaftMarks.Add(shaftMark);
                 }
@@ -1158,7 +1177,7 @@ public sealed class Program : MyGridProgram
         /// </summary>
         private ShaftMark GetCurrentShaft()
         {
-            foreach (var mark in shaftMarks)
+            foreach (var mark in ShaftMarks)
             {
                 if (!mark.isFinished)
                 {
@@ -1189,6 +1208,10 @@ public sealed class Program : MyGridProgram
             /// </summary>
             public Vector3D startCoords;
             /// <summary>
+            /// Координаты текущей глубины шахты
+            /// </summary>
+            public Vector3D currDepthCoords;
+            /// <summary>
             /// Координаты конца шахты (низ)
             /// </summary>
             public Vector3D endCoords;
@@ -1196,14 +1219,6 @@ public sealed class Program : MyGridProgram
             /// Шахта завершена
             /// </summary>
             public bool isFinished;
-            /// <summary>
-            /// Порядок в разметке в ширину
-            /// </summary>
-            public int m;
-            /// <summary>
-            /// Порядок в разметке в длину
-            /// </summary>
-            public int n;
         }
     }
 

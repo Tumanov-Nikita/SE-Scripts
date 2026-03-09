@@ -64,11 +64,11 @@ public sealed class Program : MyGridProgram
     /// <summary>
     /// Количество шахт квадратно-гнездового метода в длину
     /// </summary>
-    public readonly byte ShaftN = 1;
+    public readonly byte ShaftN = 2;
     /// <summary>
     /// Порог заполнения хранилищ, в %
     /// </summary>
-    public readonly float StorageCapacityThreshold = 60;
+    public readonly float StorageCapacityThreshold = 30;
     /// <summary>
     /// Порог заряда батарей, в %
     /// </summary>
@@ -77,6 +77,14 @@ public sealed class Program : MyGridProgram
     /// Порог заполнения водородных баков, в %
     /// </summary>
     public readonly float TanksCapacityThreshold = 50;
+    /// <summary>
+    /// Заправлять баки и заряжать батареи на базе до максимума
+    /// </summary>
+    public readonly bool FillUntillFull = true;
+    /// <summary>
+    /// Коэффициент для заполнения водородных баков и батарей, от 0 до 1
+    /// </summary>
+    public readonly float TanksAndBatteriesFillingCoeff = 0.75f;
     /// <summary>
     /// Максимальная высота над уровнем моря для дуги перемещения, в метрах
     /// </summary>
@@ -88,7 +96,7 @@ public sealed class Program : MyGridProgram
     /// <summary>
     /// Ограничение скорости для перемещения на поверхности, в м/c
     /// </summary>
-    public readonly float SurfaceSpeedLimit = 400;
+    public readonly float SurfaceSpeedLimit = 600;
     /// <summary>
     /// Ограничение скорости для перемещения в шахте, в м/c
     /// </summary>
@@ -108,7 +116,7 @@ public sealed class Program : MyGridProgram
     /// <summary>
     /// Минимальная высота над поверхностью для ускоренного перемещения в режиме выкапывания шахты
     /// </summary>
-    public readonly float AboveGroundSpeedHeight = 10f;
+    public readonly float AboveGroundSpeedHeight = 2f;
     /// <summary>
     /// Мультипликатор высоты для дуги перемещения, рекомендуется от 0.3 до 1
     /// </summary>
@@ -124,6 +132,7 @@ public sealed class Program : MyGridProgram
     public string TimerFromBaseName = "Таймер от Базы для ИИ Майнер";
     public string StoragesGroupName = "Контейнеры Майнер";
     public string ConnectorGroupName = "Коннекторы Майнер";
+    public string GyroscopesGroupName = "Гироскопы Майнер";
     public string BatteriesGroupName = "Батареи Майнер";
     public string TanksGroupName = "Баки Майнер";
     public string DrillsGroupName = "Буры Майнер";
@@ -241,7 +250,7 @@ public sealed class Program : MyGridProgram
         private readonly List<IMyShipDrill> Drills;
         private readonly List<IMyGyro> Gyros;
         private readonly List<IMyShipConnector> Connectors;
-        private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup;
+        private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup, GyroscopesGroup;
         private readonly List<IMyThrust> ThrForward = new List<IMyThrust>();
         private readonly List<IMyThrust> ThrBackward = new List<IMyThrust>();
         private readonly List<IMyThrust> ThrRight = new List<IMyThrust>();
@@ -254,6 +263,7 @@ public sealed class Program : MyGridProgram
         private readonly double LeftThrustEff = 0;
         private readonly double UpThrustEff = 0;
         private readonly double DownThrustEff = 0;
+        private readonly Vector3D SizeInMeters;
         private bool IsMiningComplete;
         private bool IsGridHorizontallyAligned;
         private Vector3D ForwardVector;
@@ -263,28 +273,19 @@ public sealed class Program : MyGridProgram
         private Vector3D BasePosition;
         private List<ShaftMark> ShaftMarks = new List<ShaftMark>();
         private bool IsMovingIntoShaft;
+        private bool StopForTurningAround;
         private Vector3D ArcStartPos;
         private Vector3D ArcTargetPos;
         private Vector3D ArcApexPos;
         private Vector3D ArcPlaneNormal;
         private bool ArcInitialized = false;
         private bool ArcIsAscending = true;
-        Vector3D SizeInMeters;
-
-
-        private readonly IMyProgrammableBlock pb;
-        private readonly IMyTextPanel textPanel;
-        private readonly IMyTextSurface LCD;
+        
         #endregion
 
         public MiningHandler()
         {
             #region Начальная инициализация
-
-            pb = (IMyProgrammableBlock)myScript.GridTerminalSystem.GetBlockWithName("Программируемый блок ии");
-            LCD = pb.GetSurface(0);
-            textPanel = (IMyTextPanel)myScript.GridTerminalSystem.GetBlockWithName("LCD panel");
-
 
             FlightMovement = (IMyFlightMovementBlock)myScript.GridTerminalSystem.GetBlockWithName(myScript.FlightControllerName);
             RemoteControl = (IMyRemoteControl)myScript.GridTerminalSystem.GetBlockWithName(myScript.RemoteControllerName);
@@ -298,8 +299,10 @@ public sealed class Program : MyGridProgram
             Vector3I sizeInBlocks = RemoteControl.CubeGrid.Max - RemoteControl.CubeGrid.Min + new Vector3I(1, 1, 1);
             SizeInMeters = new Vector3D(sizeInBlocks) * RemoteControl.CubeGrid.GridSize;
 
+            
             Gyros = new List<IMyGyro>();
-            myScript.GridTerminalSystem.GetBlocksOfType<IMyGyro>(Gyros);
+            GyroscopesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.GyroscopesGroupName);
+            GyroscopesGroup.GetBlocksOfType(Gyros);
             Connectors = new List<IMyShipConnector>();
             ConnectorsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ConnectorGroupName);
             ConnectorsGroup.GetBlocksOfType(Connectors);
@@ -311,7 +314,10 @@ public sealed class Program : MyGridProgram
             BatteriesGroup.GetBlocksOfType(Batteries);
             Tanks = new List<IMyGasTank>();
             TanksGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.TanksGroupName);
-            TanksGroup.GetBlocksOfType(Tanks);
+            if (Tanks != null)
+            {
+                TanksGroup.GetBlocksOfType(Tanks);
+            }
             Drills = new List<IMyShipDrill>();
             DrillsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.DrillsGroupName);
             DrillsGroup.GetBlocksOfType(Drills);
@@ -423,23 +429,31 @@ public sealed class Program : MyGridProgram
         /// </summary>
         internal void ReturningToBase()
         {
-            if (BasePosition.IsZero())
+            if (ArcInitialized && StopForTurningAround && RemoteControl.GetShipVelocities().LinearVelocity.Length() > myScript.MiningSpeedLimit)
             {
-                SetGyrosOverride(false);
-                StopAllGyros();
+                KeepStraightDirection();
                 StopAllThrusters();
-                myScript.Runtime.UpdateFrequency = UpdateFrequency.None;
             }
-
-            SetGyrosOverride(true);
-
-            if (MovementOnVectorArchwise(BasePosition, myScript.SurfaceSpeedLimit))
+            else
             {
-                SetGyrosOverride(false);
-                StopAllGyros();
-                StopAllThrusters();
-                SetStatus("parkingToBase");
-            }
+                StopForTurningAround = false;
+
+                if (BasePosition.IsZero())
+                {
+                    SetGyrosOverride(false);
+                    StopAllGyros();
+                    StopAllThrusters();
+                    myScript.Runtime.UpdateFrequency = UpdateFrequency.None;
+                }
+                
+                if (MovementOnVectorArchwise(BasePosition, myScript.SurfaceSpeedLimit))
+                {
+                    SetGyrosOverride(false);
+                    StopAllGyros();
+                    StopAllThrusters();
+                    SetStatus("parkingToBase");
+                }
+            }            
         }
         /// <summary>
         /// Режим парковки на базе
@@ -453,9 +467,11 @@ public sealed class Program : MyGridProgram
                 SetConnectorsEnabled(true);
                 TimerForAIToBase.Trigger();
             }
-            if (CheckBatteriesInPercent() > 100 - myScript.BatteriesCapacityThreshold
-                && CheckTanksInPercent() > 100 - myScript.TanksCapacityThreshold
-                && CheckStoragesInPercent() == 0
+            float tanksFillingThreshold = myScript.FillUntillFull ? 100 : CalculateFillingValue(myScript.TanksCapacityThreshold);
+            float tanksChargingThreshold = myScript.FillUntillFull ? 100 : CalculateFillingValue(myScript.BatteriesCapacityThreshold);
+            if (CheckStoragesInPercent() == 0
+                && CheckTanksInPercent() >= tanksFillingThreshold
+                && CheckBatteriesInPercent() >= tanksChargingThreshold
                 && FlightMovement.Enabled
                 && Connectors.Any(c => c.Status == MyShipConnectorStatus.Connected))
             {
@@ -545,6 +561,7 @@ public sealed class Program : MyGridProgram
             }
             else
             {
+                StopForTurningAround = true;
                 SetGyrosOverride(false);
                 StopAllGyros();
                 StopAllThrusters();
@@ -659,7 +676,6 @@ public sealed class Program : MyGridProgram
                 gyro.Roll = roll * myScript.GyroMult;
                 gyro.Yaw = yaw * myScript.GyroMult;
             }
-            myScript.Echo($"axisGrav = {axisGrav.Length():F} axisForward = {axisForward.Length():F}");
             IsGridHorizontallyAligned = axisGrav.Length() + axisForward.Length() < 0.01;
         }
         /// <summary>
@@ -1061,6 +1077,10 @@ public sealed class Program : MyGridProgram
         /// <returns>Заполненность, в %</returns>
         private float CheckTanksInPercent()
         {
+            if (Tanks.Count == 0)
+            {
+                return 100;
+            }
             float H2_O2Count = 0;
             double H2_O2Filled = 0;
             foreach (IMyGasTank gastank in Tanks)
@@ -1086,6 +1106,15 @@ public sealed class Program : MyGridProgram
             }
             charge = 100 * charge / maxCharge;
             return charge;
+        }
+        /// <summary>
+        /// Вычисляет значение, до которого нужно заполнить системы (баки или батареи)
+        /// </summary>
+        /// <param name="threshold">Пороговое значение для возврата на базу</param>
+        /// <returns></returns>
+        private float CalculateFillingValue(float threshold)
+        {
+            return threshold + ((100 - threshold) * myScript.TanksAndBatteriesFillingCoeff);
         }
         /// <summary>
         /// Устанавливает режим работы дрона
@@ -1186,15 +1215,6 @@ public sealed class Program : MyGridProgram
             }
             return new ShaftMark();
         }
-
-
-
-        // Testing
-        private void PrintVector(Vector3D vector, string name, bool append, string colorHEX = "#FF00FF")
-        {
-            textPanel.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
-        }
-        // Testing
 
         #endregion
 

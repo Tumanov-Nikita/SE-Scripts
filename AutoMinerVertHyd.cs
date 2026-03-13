@@ -70,7 +70,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Порог заполнения хранилищ, в %
         /// </summary>
-        public readonly float StorageCapacityThreshold = 30;
+        public readonly float StorageCapacityThreshold = 70;
         /// <summary>
         /// Порог заряда батарей, в %
         /// </summary>
@@ -110,7 +110,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Дополнительный отступ от ширины/длины дрона для разметки шахт, в м
         /// </summary>
-        public readonly float MiningMargin = 1.4f;
+        public readonly float MiningMargin = 1.35f;
         /// <summary>
         /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
         /// </summary>
@@ -127,17 +127,17 @@ namespace AutoMinerVertHyd
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
-        public string EventControllerName = "Контроллер события ИИ Выгрузка";
-        public string FlightControllerName = "Полет ИИ Майнер";
-        public string RemoteControllerName = "ДУ ИИ Майнер";
-        public string TimerToBaseName = "Таймер к Базе для ИИ Майнер";
-        public string TimerFromBaseName = "Таймер от Базы для ИИ Майнер";
-        public string StoragesGroupName = "Контейнеры Майнер";
-        public string ConnectorGroupName = "Коннекторы Майнер";
-        public string GyroscopesGroupName = "Гироскопы Майнер";
-        public string BatteriesGroupName = "Батареи Майнер";
-        public string TanksGroupName = "Баки Майнер";
-        public string DrillsGroupName = "Буры Майнер";
+        public readonly string EventControllerName = "Контроллер события ИИ Выгрузка";
+        public readonly string FlightControllerName = "Полет ИИ Майнер";
+        public readonly string RemoteControllerName = "ДУ ИИ Майнер";
+        public readonly string TimerToBaseName = "Таймер к Базе для ИИ Майнер";
+        public readonly string TimerFromBaseName = "Таймер от Базы для ИИ Майнер";
+        public readonly string StoragesGroupName = "Контейнеры Майнер";
+        public readonly string ConnectorGroupName = "Коннекторы Майнер";
+        public readonly string GyroscopesGroupName = "Гироскопы Майнер";
+        public readonly string BatteriesGroupName = "Батареи Майнер";
+        public readonly string TanksGroupName = "Баки Майнер";
+        public readonly string DrillsGroupName = "Буры Майнер";
         #endregion
 
         private char CurrentIcon;
@@ -267,7 +267,7 @@ namespace AutoMinerVertHyd
             private readonly double DownThrustEff = 0;
             private readonly Vector3D SizeInMeters;
             private bool IsMiningComplete;
-            private bool IsGridHorizontallyAligned;
+            private bool IsGridAlignedToGravity;
             private Vector3D ForwardVector;
             private Vector3D PlanetCenter;
             private Vector3D MineCenterPosition;
@@ -377,10 +377,10 @@ namespace AutoMinerVertHyd
             /// </summary>
             public void Mining()
             {
-                KeepStraightDirection();
+                GravitationAligning();
                 if (CheckStorageAndTanksAndBatteries())
                 {
-                    if (IsGridHorizontallyAligned)
+                    if (IsGridAlignedToGravity)
                     {
 
                         SetDrillsEnabled(true);
@@ -433,7 +433,7 @@ namespace AutoMinerVertHyd
             {
                 if (ArcInitialized && StopForTurningAround && RemoteControl.GetShipVelocities().LinearVelocity.Length() > myScript.MiningSpeedLimit)
                 {
-                    KeepStraightDirection();
+                    GravitationAligning();
                     StopAllThrusters();
                 }
                 else
@@ -575,10 +575,10 @@ namespace AutoMinerVertHyd
             /// </summary>
             internal void MovingToCurrentShaft()
             {
-                KeepStraightDirection();
+                GravitationAligning();
                 if (CheckStorageAndTanksAndBatteries() && !IsMiningComplete)
                 {
-                    if (IsGridHorizontallyAligned)
+                    if (IsGridAlignedToGravity)
                     {
                         if (MineCenterPosition.IsZero())
                         {
@@ -651,7 +651,7 @@ namespace AutoMinerVertHyd
             /// <summary>
             /// Выравнивает дрон по вектору планетарной гравитации, делает свой вектор Down сонаправленным ему
             /// </summary>
-            private void KeepStraightDirection()
+            private void GravitationAligning()
             {
                 Vector3D gravVectorNorm = Vector3D.Normalize(RemoteControl.GetNaturalGravity());
                 Vector3D axisGrav = gravVectorNorm.Cross(RemoteControl.WorldMatrix.Down);
@@ -678,7 +678,7 @@ namespace AutoMinerVertHyd
                     gyro.Roll = roll * myScript.GyroMult;
                     gyro.Yaw = yaw * myScript.GyroMult;
                 }
-                IsGridHorizontallyAligned = axisGrav.Length() + axisForward.Length() < 0.01;
+                IsGridAlignedToGravity = axisGrav.Length() + axisForward.Length() < 0.01;
             }
             /// <summary>
             /// Устанавливает всем гироскопам значение перехвата управления

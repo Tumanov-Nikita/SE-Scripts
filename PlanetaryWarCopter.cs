@@ -25,6 +25,7 @@ using VRage.Scripting;
 using VRageMath;
 using static PlanetaryWarCopter.Program;
 using static Sandbox.Game.World.MyWorldGenerator;
+using static System.BitStreamExtensions;
 using static System.Net.WebRequestMethods;
 using static System.Reflection.Metadata.BlobBuilder;
 using static VRage.Game.MyObjectBuilder_ControllerSchemaDefinition;
@@ -57,12 +58,16 @@ namespace PlanetaryWarCopter
 
         public readonly string MergeBlockGroupName = "Соединители Коптер";
 
+        public readonly string GyroGroupName = "Гироскопы Коптер";
+        public readonly string ThrustersGroupName = "Ускорители Коптер";
+
         #endregion
 
 
         private static Program myScript;
         ScanningHandler scanningHandler;
         BombingHandler bombingHandler;
+        FlightHandler flightHandler;
 
         public Program()
         {
@@ -74,6 +79,7 @@ namespace PlanetaryWarCopter
 
             scanningHandler = new ScanningHandler();
             bombingHandler = new BombingHandler(Controller, LCD);
+            flightHandler = new FlightHandler(Controller, LCD);
 
             Runtime.UpdateFrequency = UpdateFrequency.Update1;
 
@@ -101,19 +107,25 @@ namespace PlanetaryWarCopter
                         LCD.WriteText("Цель не найдена", false);
                     }
                     break;
-                case "Fire":
+                case "FireOnce":
                     if (!Target.IsEmpty())
                     {
-                        bombingHandler.SetDetonationTimeToWarheads();
                         bombingHandler.Fire();
                     }
+                    break;
+                case "GetWarheadsArmed":
+                    bombingHandler.SetWarheadsArmed(true);
+                    break;
+                case "GetWarheadsDisarmed":
+                    bombingHandler.SetWarheadsArmed(false);
                     break;
                 default:
                     break;
 
             }
-
+            flightHandler.KeepHorizon();
             scanningHandler.ControlCamera();
+           
         }
 
         
@@ -151,10 +163,10 @@ namespace PlanetaryWarCopter
         public class BombingHandler
         {
             private readonly IMyBlockGroup MergeBlockGroup;
-            private readonly List<IMyShipMergeBlock> mergeBlocks;
-            private readonly List<IMyWarhead> warheads;
             private readonly IMyShipController _controller;
             private readonly IMyTextPanel _lcd;
+            private List<IMyShipMergeBlock> mergeBlocks;
+            private List<IMyWarhead> warheads;
 
             public BombingHandler(IMyShipController controller, IMyTextPanel lcd)
             {
@@ -162,10 +174,8 @@ namespace PlanetaryWarCopter
                 _lcd = lcd;
                 mergeBlocks = new List<IMyShipMergeBlock>();
                 MergeBlockGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.MergeBlockGroupName);
-                if (mergeBlocks != null)
-                {
-                    MergeBlockGroup.GetBlocksOfType(mergeBlocks);
-                }
+                MergeBlockGroup.GetBlocksOfType(mergeBlocks);
+                
                 warheads = new List<IMyWarhead>();
                 myScript.GridTerminalSystem.GetBlocksOfType<IMyWarhead>(warheads);
             }
@@ -191,19 +201,129 @@ namespace PlanetaryWarCopter
 
             public void Fire()
             {
-                foreach (var warhead in warheads)
+                if (mergeBlocks.Count > 0)
                 {
-                    warhead.IsArmed = true;
-                    warhead.StartCountdown();
-                }
-                foreach (var mergeBlock in mergeBlocks)
-                {
-                    mergeBlock.Enabled = false;
+                    mergeBlocks[0].Enabled = false;
+                    mergeBlocks.RemoveAt(0);
                 }
             }
 
-
+            public void SetWarheadsArmed(bool armed)
+            {
+                foreach (var warhead in warheads)
+                {
+                    warhead.IsArmed = armed;
+                }
+            }
         }
+
+        public class FlightHandler
+        {
+            //3 переменные для поддержания высоты полета над поверхностью
+            double HoverHeight = 0;
+            double CurrentHeight = 0;
+            double ForwardSpeed = 0;
+            double ForwardVelocityOld = 0;
+            double Faccel = 0;
+            //Коэффициент Kv, характеризующий пропорциональную зависимость между разностью требуемой и текущей высот и необходимой вертикальной скоростью
+            double Kv = 1;
+            //Коэффициент Ka, характеризующий пропорциональную зависимость между разностью требуемой и текущей верт. скоростей и желаемым ускорением
+            double Ka = 2.5;
+
+            private readonly IMyBlockGroup gyroGroup, thrustersGroup;
+            private readonly IMyShipController _controller;
+            private readonly IMyTextPanel _lcd;
+            List<IMyThrust> thrusters;
+            List<IMyGyro> gyros;
+
+            public FlightHandler(IMyShipController controller, IMyTextPanel lcd)
+            {
+                _controller = controller;
+                _lcd = lcd;
+                gyros = new List<IMyGyro>();
+                gyroGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.GyroGroupName);
+                gyroGroup.GetBlocksOfType(gyros);
+                thrusters = new List<IMyThrust>();
+                thrustersGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ThrustersGroupName);
+                thrustersGroup.GetBlocksOfType(thrusters);
+            }
+
+            public void KeepHorizon()
+            {
+
+                HoverHeight += _controller.MoveIndicator.Y / 10;
+                float ShipMass = _controller.CalculateShipMass().PhysicalMass;
+
+                Vector3D GravityVector = _controller.GetNaturalGravity();
+                Vector3D GravNorm = Vector3D.Normalize(GravityVector);
+                Vector3D ForwardVector = Vector3D.Normalize(Vector3D.Reject(_controller.WorldMatrix.Forward, GravNorm));
+                Vector3D VelocityCompensator = Vector3D.Reject(_controller.GetShipVelocities().LinearVelocity, ForwardVector);
+                if (VelocityCompensator.Length() > 10)
+                {
+                    VelocityCompensator = Vector3D.Normalize(VelocityCompensator) * 10;
+                }
+                Vector3D StopVector = VelocityCompensator / 10;
+
+
+                //float ForwardInput = Controller.MoveIndicator.Z;
+                ForwardSpeed += _controller.MoveIndicator.Z * 0.1;
+                double ForwardVelocity = -_controller.GetShipVelocities().LinearVelocity.Dot(ForwardVector);
+                Faccel = ForwardVelocity - ForwardVelocityOld;
+                ForwardVelocityOld = ForwardVelocity;
+
+                double ForwardSpeedFactor = ((ForwardSpeed - ForwardVelocity) * 0.1 - Faccel) * 0.5;
+
+                Vector3D ForwardPart = ForwardVector * ForwardSpeedFactor;
+                float YawInput = _controller.MoveIndicator.X;
+                StopVector += _controller.WorldMatrix.Left * _controller.RollIndicator * 1.0f;
+                StopVector += ForwardPart * 1.2f;
+                if (StopVector.Length() > 1)
+                {
+                    StopVector = Vector3D.Normalize(StopVector);
+                }
+                StopVector += GravNorm;
+
+                float RollInput = (float)StopVector.Dot(_controller.WorldMatrix.Left);
+                float PitchInput = -(float)StopVector.Dot(_controller.WorldMatrix.Forward);
+
+                foreach (IMyGyro Gyro in gyros)
+                {
+                    Gyro.Yaw = YawInput;
+                    Gyro.Roll = RollInput;
+                    Gyro.Pitch = PitchInput;
+                }
+
+
+                _controller.TryGetPlanetElevation(MyPlanetElevation.Surface, out CurrentHeight);
+                //if (CurrentHeight > myRadar.CritDepth) { CurrentHeight = myRadar.CritDepth; }
+                double HeightDelta = HoverHeight - CurrentHeight;
+                double VerticalSpeed = -_controller.GetShipVelocities().LinearVelocity.Dot(GravNorm);
+
+                if (HeightDelta < 0)
+                {
+                    HeightDelta /= 10;
+                }
+
+                double HoverCorrection = (HeightDelta * Kv - VerticalSpeed) * Ka;
+                myScript.Echo("HoverCorrection = " + HoverCorrection);
+
+                float MyThrust = (float)(GravityVector.Length() * ShipMass * (1 + HoverCorrection) / GravNorm.Dot(_controller.WorldMatrix.Down));
+                if (MyThrust <= 0)
+                {
+                    MyThrust = 1;
+                }
+                SetThrust(MyThrust);
+            }
+
+            public void SetThrust(float Thr)
+            {
+                foreach (IMyThrust thruster in thrusters)
+                {
+                    thruster.ThrustOverride = Thr / thrusters.Count;
+                }
+            }
+        }
+
 
         public string GetVectorString(Vector3D vector, string name, string colorHEX = "#FF00FF")
         {

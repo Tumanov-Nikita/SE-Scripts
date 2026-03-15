@@ -135,6 +135,7 @@ namespace AutoMinerVertHyd
         public readonly string StoragesGroupName = "Контейнеры Майнер";
         public readonly string ConnectorGroupName = "Коннекторы Майнер";
         public readonly string GyroscopesGroupName = "Гироскопы Майнер";
+        public readonly string ThrustersGroupName = "Двигатели Майнер";
         public readonly string BatteriesGroupName = "Батареи Майнер";
         public readonly string TanksGroupName = "Баки Майнер";
         public readonly string DrillsGroupName = "Буры Майнер";
@@ -252,7 +253,7 @@ namespace AutoMinerVertHyd
             private readonly List<IMyShipDrill> Drills;
             private readonly List<IMyGyro> Gyros;
             private readonly List<IMyShipConnector> Connectors;
-            private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup, GyroscopesGroup;
+            private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup, GyroscopesGroup, ThrustersGroup;
             private readonly List<IMyThrust> ThrForward = new List<IMyThrust>();
             private readonly List<IMyThrust> ThrBackward = new List<IMyThrust>();
             private readonly List<IMyThrust> ThrRight = new List<IMyThrust>();
@@ -329,7 +330,8 @@ namespace AutoMinerVertHyd
                 RemoteControl.Orientation.GetMatrix(out RemConMatrix);
                 Matrix ThrMatrix = new Matrix();
                 List<IMyThrust> ThrTemp = new List<IMyThrust>();
-                myScript.GridTerminalSystem.GetBlocksOfType<IMyThrust>(ThrTemp);
+                ThrustersGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ThrustersGroupName);
+                ThrustersGroup.GetBlocksOfType(ThrTemp);
                 foreach (IMyThrust thr in ThrTemp)
                 {
                     thr.Orientation.GetMatrix(out ThrMatrix);

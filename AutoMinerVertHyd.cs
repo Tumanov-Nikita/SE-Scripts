@@ -94,7 +94,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор для сигнала гироскопам
         /// </summary>
-        public readonly float GyroMult = 5;
+        public readonly float GyroMult = 2;
         /// <summary>
         /// Ограничение скорости для перемещения на поверхности, в м/c
         /// </summary>
@@ -110,7 +110,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Дополнительный отступ от ширины/длины дрона для разметки шахт, в м
         /// </summary>
-        public readonly float MiningMargin = 1.35f;
+        public readonly float MiningMargin = 0.00f;
         /// <summary>
         /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
         /// </summary>
@@ -122,7 +122,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор высоты для дуги перемещения, рекомендуется от 0.3 до 1
         /// </summary>
-        public readonly float ArcHeightMult = 0.9f;
+        public readonly float ArcHeightMult = 1.0f;
 
         #endregion
 
@@ -317,7 +317,7 @@ namespace AutoMinerVertHyd
                 BatteriesGroup.GetBlocksOfType(Batteries);
                 Tanks = new List<IMyGasTank>();
                 TanksGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.TanksGroupName);
-                if (Tanks != null)
+                if (TanksGroup != null)
                 {
                     TanksGroup.GetBlocksOfType(Tanks);
                 }
@@ -669,16 +669,12 @@ namespace AutoMinerVertHyd
                     axisForward = Vector3D.Normalize(axisForward);
                 }
 
-                float pitch = (float)axisGrav.Dot(RemoteControl.WorldMatrix.Right);
-                float roll = (float)axisGrav.Dot(RemoteControl.WorldMatrix.Backward);
-                float yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up);
-
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = pitch * myScript.GyroMult;
-                    gyro.Roll = roll * myScript.GyroMult;
-                    gyro.Yaw = yaw * myScript.GyroMult;
+                    gyro.Pitch = (float)axisGrav.Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
+                    gyro.Roll = (float)axisGrav.Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
+                    gyro.Yaw = (float)axisForward.Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
                 }
                 IsGridAlignedToGravity = axisGrav.Length() + axisForward.Length() < 0.01;
             }
@@ -795,7 +791,7 @@ namespace AutoMinerVertHyd
                     //LCD.WriteText($"stopDistRight = {stopDistRight:F}\n", true);
                     //LCD.WriteText($"stopDistUp = {stopDistUp:F}\n", true);
 
-                    if (pathVectorForward.Length() > stopDistForward && pathVectorForward.Length() > myScript.AcceptableMovingAccuracy
+                    if (pathVectorForward.Length() > stopDistForward && pathVectorForward.Length() > myScript.AcceptableMovingAccuracy //движение по продольной оси
                         && (horizontalAligmentFirst || pathVectorUp.Length() < myScript.AcceptableMovingAccuracy))
                     {
                         SetAxisThrustsByScalar(ThrForward, ThrBackward, ForwardScalar);
@@ -806,7 +802,7 @@ namespace AutoMinerVertHyd
                         SetTrustersPercentage(ThrBackward, 0);
                     }
 
-                    if (pathVectorRight.Length() > stopDistRight && pathVectorRight.Length() > myScript.AcceptableMovingAccuracy
+                    if (pathVectorRight.Length() > stopDistRight && pathVectorRight.Length() > myScript.AcceptableMovingAccuracy //движение по поперечной оси
                         && (horizontalAligmentFirst || pathVectorUp.Length() < myScript.AcceptableMovingAccuracy))
                     {
                         SetAxisThrustsByScalar(ThrRight, ThrLeft, RightScalar);
@@ -821,11 +817,11 @@ namespace AutoMinerVertHyd
                         && (!horizontalAligmentFirst || (pathVectorForward.Length() < myScript.AcceptableMovingAccuracy
                         && pathVectorRight.Length() < myScript.AcceptableMovingAccuracy)))
                     {
-                        if (UpScalar > 0)
+                        if (UpScalar > 0) //подъем
                         {
                             SetTrustersPercentage(ThrUp, 1);
                         }
-                        else
+                        else //снижение
                         {
                             float keepElevationT = (float)(shipMass * RemoteControl.GetNaturalGravity().Length());
                             if (-upVelScalar < speedLimit * 0.95f && -upVelScalar > speedLimit)
@@ -1012,20 +1008,15 @@ namespace AutoMinerVertHyd
                     axisForward = Vector3D.Normalize(axisForward);
                 }
 
-                float pitch = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Right);
-                float roll = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Backward);
-                float yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up);
-
-
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = pitch * myScript.GyroMult;
-                    gyro.Roll = roll * myScript.GyroMult;
-                    gyro.Yaw = yaw * myScript.GyroMult;
+                    gyro.Pitch = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Right) * myScript.GyroMult;
+                    gyro.Roll = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Backward) * myScript.GyroMult;
+                    gyro.Yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up) * myScript.GyroMult;
                 }
 
-                return pitch + roll + yaw < 0.001;
+                return axisTarget.Length() + axisForward.Length() < 0.01;
             }
             /// <summary>
             /// Устанавливает тягу группе двигателей определенной оси в зависимости от значения скаляра перемещения по этой оси
@@ -1218,6 +1209,11 @@ namespace AutoMinerVertHyd
                     }
                 }
                 return new ShaftMark();
+            }
+
+            public string GetCurrentMiningProgress()
+            {
+
             }
 
             #endregion

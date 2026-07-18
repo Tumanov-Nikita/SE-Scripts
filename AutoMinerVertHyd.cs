@@ -1213,7 +1213,7 @@ namespace AutoMinerVertHyd
 
             public string GetCurrentMiningProgress()
             {
-
+                return "";
             }
 
             #endregion

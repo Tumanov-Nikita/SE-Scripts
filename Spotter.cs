@@ -43,21 +43,26 @@ namespace Spotter
 
         IMyTextPanel LCD;
         MyDetectedEntityInfo Target;
+        IMyTextSurface pbText;
 
         #region Настройки
         public readonly double ScanRange = 10000;
+        public readonly string ConnectionTag = "WarCopter";
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
 
         public readonly string CameraName = "Камера Споттер";
         public readonly string LCDName = "Экран Споттер";
+        public readonly string AntennaName = "Антенна Споттер";
 
         #endregion
 
 
         private static Program myScript;
         SpottingHandler spottingHandler;
+        CommunicationHandler communicationHandler;
+
         int coordsCount = 0;
 
         public Program()
@@ -68,9 +73,14 @@ namespace Spotter
             LCD = GridTerminalSystem.GetBlockWithName(LCDName) as IMyTextPanel;
 
             spottingHandler = new SpottingHandler(LCD);
+            communicationHandler = new CommunicationHandler();
 
-            Runtime.UpdateFrequency = UpdateFrequency.Update100;
+            
 
+            Runtime.UpdateFrequency = UpdateFrequency.Update1;
+
+            pbText = myScript.Me.GetSurface(0);
+            pbText.WriteText(myScript.IGC.Me.ToString() + "\n");
 
         }
 
@@ -92,6 +102,9 @@ namespace Spotter
                 case "Clear":
                     spottingHandler.Clear();
                     break;
+                case "SendMessage":
+                    communicationHandler.SendTarget();
+                    break;
                 default:
                     break;
 
@@ -101,22 +114,23 @@ namespace Spotter
         
 
 
-        public class SpottingHandler
+        private class SpottingHandler
         {
             private readonly IMyTextPanel _lcd;
-            private readonly IMyCameraBlock Camera;
+            private readonly IMyCameraBlock _camera;
 
 
             public SpottingHandler(IMyTextPanel lcd)
             {
                 _lcd = lcd;
-                Camera = myScript.GridTerminalSystem.GetBlockWithName(myScript.CameraName) as IMyCameraBlock;
-                Camera.EnableRaycast = true;
+                _camera = myScript.GridTerminalSystem.GetBlockWithName(myScript.CameraName) as IMyCameraBlock;
+                if (_camera != null)
+                    _camera.EnableRaycast = true;
             }
 
             public bool Scan(double range)
             {
-                myScript.Target = Camera.Raycast(range, 0, 0);
+                myScript.Target = _camera.Raycast(range, 0, 0);
                 return !myScript.Target.IsEmpty();
             }
 
@@ -132,7 +146,40 @@ namespace Spotter
 
         }
 
-        
+        private class CommunicationHandler
+        {
+
+            public CommunicationHandler()
+            {
+            }
+
+            public void SendTarget()
+            {
+
+                myScript.IGC.SendBroadcastMessage(myScript.ConnectionTag, "bonk");
+                myScript.LCD.WriteText("Broadcast message sended\n", true);
+            }
+
+            public void GetTarget()
+            {
+
+            }
+
+            public class MyMessage
+            {
+                public string Command { get; set; }
+                public object Data { get; set; }
+
+                public MyMessage(string command, object data)
+                {
+                    Command = command;
+                    Data = data;
+                }
+            }
+
+        }
+
+
 
 
 

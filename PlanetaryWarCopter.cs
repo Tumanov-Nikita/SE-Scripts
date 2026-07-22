@@ -37,7 +37,6 @@ namespace PlanetaryWarCopter
 
 
 
-
         IMyShipController Controller;
         IMyTextPanel LCD;
         MyDetectedEntityInfo Target;
@@ -45,19 +44,19 @@ namespace PlanetaryWarCopter
         Vector3D DropPoint;
         bool AligningEnabled;
 
+        IMyTextSurface pbText;
+
         #region Настройки
         public readonly double ScanRange = 5000;
         public readonly float AcceptableMovingAccuracy = 0.5f;
         public readonly float GyroMult = 0.5f;
+        public readonly string ConnectionTag = "WarCopter";
 
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
 
-        public readonly string RotorBaseName = "Ротор Камера Горизонт Бомбер";
-        public readonly string RotorAdjName = "Ротор Камера Вертикаль Бомбер";
-        public readonly string CameraName = "Камера Обзор Бомбер";
-        public readonly string LCDName = "Экран Бомбер";
+        public readonly string CameraName = "Камера Вниз Бомбер";
         public readonly string ControllerName = "ДУ Бомбер";
         public readonly string MergeBlockGroupName = "Соединители Бомбер";
         public readonly string GyroGroupName = "Гироскопы Бомбер";
@@ -70,6 +69,7 @@ namespace PlanetaryWarCopter
         ScanningHandler scanningHandler;
         BombingHandler bombingHandler;
         FlightHandler flightHandler;
+        CommunicationHandler communicationHandler;
 
         public Program()
         {
@@ -77,14 +77,16 @@ namespace PlanetaryWarCopter
             
 
             Controller = GridTerminalSystem.GetBlockWithName(ControllerName) as IMyShipController;
-            LCD = GridTerminalSystem.GetBlockWithName(LCDName) as IMyTextPanel;
 
-            scanningHandler = new ScanningHandler(Controller, LCD);
-            bombingHandler = new BombingHandler(Controller, LCD);
+            scanningHandler = new ScanningHandler(Controller);
+            bombingHandler = new BombingHandler(Controller);
             flightHandler = new FlightHandler(Controller, LCD);
+            communicationHandler = new CommunicationHandler();
 
             Runtime.UpdateFrequency = UpdateFrequency.Update1;
 
+            pbText = myScript.Me.GetSurface(0);
+            pbText.WriteText(myScript.IGC.Me.ToString() + "\n");
 
         }
 
@@ -100,13 +102,6 @@ namespace PlanetaryWarCopter
                     if (scanningHandler.Scan(ScanRange))
                     {
                         DistanceToTarget = (Target.HitPosition.Value - DropPoint).Length();
-                        LCD.WriteText($"{Target.Name}\n", false);
-                        LCD.WriteText($"Дистанция: {DistanceToTarget:F}\n" , true);
-                        bombingHandler.PrintTime();
-                    }
-                    else
-                    {
-                        LCD.WriteText("Цель не найдена", false);
                     }
                     break;
                 case "Fire":
@@ -133,19 +128,22 @@ namespace PlanetaryWarCopter
                     flightHandler.StopAllGyros();
                     flightHandler.StopAllThrusters();
                     break;
+                case "ProcessMessage":
+                    communicationHandler.ProcessMessage();
+                    break;
                 default:
                     break;
 
             }
-            scanningHandler.ControlCamera();
-            if (AligningEnabled)
-            {
-                flightHandler.GravitationAligning();
-            }
-            if (flightHandler.IsMoving && !DropPoint.IsZero())
-            {
-                flightHandler.IsMoving = !flightHandler.MovementOnVectorLinear(DropPoint, 30, false);
-            }
+            //if (AligningEnabled)
+            //{
+            //    flightHandler.GravitationAligning();
+            //}
+            //if (flightHandler.IsMoving && !DropPoint.IsZero())
+            //{
+            //    flightHandler.IsMoving = !flightHandler.MovementOnVectorLinear(DropPoint, 30, false);
+            //}
+            
         }
 
         
@@ -160,22 +158,12 @@ namespace PlanetaryWarCopter
             private readonly Vector3D PlanetCenter;
 
 
-            public ScanningHandler(IMyShipController controller, IMyTextPanel lcd)
+            public ScanningHandler(IMyShipController controller)
             {
                 _controller = controller;
-                _lcd = lcd;
-                RotorBase = myScript.GridTerminalSystem.GetBlockWithName(myScript.RotorBaseName) as IMyMotorStator;
-                RotorAdj = myScript.GridTerminalSystem.GetBlockWithName(myScript.RotorAdjName) as IMyMotorStator;
                 Camera = myScript.GridTerminalSystem.GetBlockWithName(myScript.CameraName) as IMyCameraBlock;
                 Camera.EnableRaycast = true;
                 _controller.TryGetPlanetPosition(out PlanetCenter);
-            }
-
-
-            public void ControlCamera()
-            {
-                RotorBase.TargetVelocityRPM = -myScript.Controller.RotationIndicator.Y;
-                RotorAdj.TargetVelocityRPM = myScript.Controller.RotationIndicator.X;
             }
 
             public bool Scan(double range)
@@ -201,34 +189,28 @@ namespace PlanetaryWarCopter
 
         public class BombingHandler
         {
-            private readonly IMyBlockGroup MergeBlockGroup;
+            private readonly IMyBlockGroup _mergeBlockGroup;
             private readonly IMyShipController _controller;
             private readonly IMyTextPanel _lcd;
-            private List<IMyShipMergeBlock> mergeBlocks;
-            private List<IMyWarhead> warheads;
+            private List<IMyShipMergeBlock> _mergeBlocks;
+            private List<IMyWarhead> _warheads;
+            private List<Vector3D> _targets;
 
-            public BombingHandler(IMyShipController controller, IMyTextPanel lcd)
+            public BombingHandler(IMyShipController controller)
             {
                 _controller = controller;
-                _lcd = lcd;
-                mergeBlocks = new List<IMyShipMergeBlock>();
-                MergeBlockGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.MergeBlockGroupName);
-                MergeBlockGroup.GetBlocksOfType(mergeBlocks);
+                _mergeBlocks = new List<IMyShipMergeBlock>();
+                _mergeBlockGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.MergeBlockGroupName);
+                _mergeBlockGroup.GetBlocksOfType(_mergeBlocks);
                 
-                warheads = new List<IMyWarhead>();
-                myScript.GridTerminalSystem.GetBlocksOfType<IMyWarhead>(warheads);
-            }
-
-            public void PrintTime()
-            {
-                var time = CalculateFlightTime(myScript.DistanceToTarget, _controller.GetNaturalGravity().Length());
-                _lcd.WriteText($"Время полета: {time:F}\n", true);
+                _warheads = new List<IMyWarhead>();
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyWarhead>(_warheads);
             }
 
             public void SetDetonationTimeToWarheads()
             {
                 var dropTime = CalculateFlightTime(myScript.DistanceToTarget, _controller.GetNaturalGravity().Length());
-                foreach (var warhead in warheads)
+                foreach (var warhead in _warheads)
                 {
                     warhead.DetonationTime = dropTime;
                 }
@@ -240,16 +222,16 @@ namespace PlanetaryWarCopter
 
             public void Fire()
             {
-                if (mergeBlocks.Count > 0)
+                if (_mergeBlocks.Count > 0)
                 {
-                    mergeBlocks[0].Enabled = false;
-                    mergeBlocks.RemoveAt(0);
+                    _mergeBlocks[0].Enabled = false;
+                    _mergeBlocks.RemoveAt(0);
                 }
             }
 
             public void SetWarheadsArmed(bool armed)
             {
-                foreach (var warhead in warheads)
+                foreach (var warhead in _warheads)
                 {
                     warhead.IsArmed = armed;
                 }
@@ -523,6 +505,47 @@ namespace PlanetaryWarCopter
             }
         }
 
+
+        private class CommunicationHandler
+        {
+            IMyBroadcastListener _listener;
+            public CommunicationHandler()
+            {
+                _listener = myScript.IGC.RegisterBroadcastListener(myScript.ConnectionTag);
+                _listener.SetMessageCallback("ProcessMessage");
+            }
+
+            public void SendTarget(Vector3D vector)
+            {
+                var list = new List<Vector3D>();
+            }
+
+            public void ProcessMessage()
+            {
+                var messageData = _listener.AcceptMessage().Data;
+                
+                if (messageData.GetType() == typeof(string))
+                {
+                    var mes = messageData as string;
+                    myScript.pbText.WriteText(mes + "\n", true);
+                }
+                //myScript.pbText.WriteText("Success\n", true);
+            }
+
+            public class MyMessage
+            {
+                public string Command { get; set; }
+                public object Data { get; set; }
+
+                public MyMessage(string command, object data)
+                {
+                    Command = command;
+                    Data = data;
+                }
+            }
+
+
+        }
 
         public string GetVectorString(Vector3D vector, string name, string colorHEX = "#FF00FF")
         {

@@ -41,19 +41,21 @@ namespace Spotter
 
 
 
-        IMyTextPanel LCD;
+        IMyTextPanel LCD, LCD2;
         MyDetectedEntityInfo Target;
         IMyTextSurface pbText;
 
         #region Настройки
         public readonly double ScanRange = 10000;
         public readonly string ConnectionTag = "WarCopter";
+        public readonly long BomberAddress = 73332424494781014;
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
 
         public readonly string CameraName = "Камера Споттер";
         public readonly string LCDName = "Экран Споттер";
+        public readonly string LCD2Name = "Экран 2 Споттер";
         public readonly string AntennaName = "Антенна Споттер";
 
         #endregion
@@ -63,7 +65,6 @@ namespace Spotter
         SpottingHandler spottingHandler;
         CommunicationHandler communicationHandler;
 
-        int coordsCount = 0;
 
         public Program()
         {
@@ -71,6 +72,7 @@ namespace Spotter
             
 
             LCD = GridTerminalSystem.GetBlockWithName(LCDName) as IMyTextPanel;
+            LCD2 = GridTerminalSystem.GetBlockWithName(LCD2Name) as IMyTextPanel;
 
             spottingHandler = new SpottingHandler(LCD);
             communicationHandler = new CommunicationHandler();
@@ -95,20 +97,29 @@ namespace Spotter
                 case "Scan":
                     if (spottingHandler.Scan(ScanRange))
                     {
-                        spottingHandler.PrintVector((Vector3D)myScript.Target.HitPosition, $"Таргет {myScript.coordsCount.ToString()}", true);
-                        myScript.coordsCount++;
+                        var hitPos = (Vector3D)myScript.Target.HitPosition;
+                        //spottingHandler.PrintVector(hitPos, $"Таргет {myScript.coordsCount.ToString()}", true);
+                        communicationHandler.SendTarget(hitPos);
                     }
+                    break;
+                case "GoToCurrent":
+                    communicationHandler.SendGoToCurrent();
+                    break;
+                case "Fire":
+                    communicationHandler.SendFire();
                     break;
                 case "Clear":
                     spottingHandler.Clear();
                     break;
-                case "SendMessage":
-                    communicationHandler.SendTarget();
+                case "ProcessMessage":
+                    communicationHandler.ProcessMessage();
                     break;
                 default:
                     break;
 
             }
+
+            LCD.WriteText(communicationHandler.GetTargetsInfo());
         }
 
         
@@ -148,22 +159,94 @@ namespace Spotter
 
         private class CommunicationHandler
         {
+            private int targetscount = 0;
+            private double distanceToTarget = 0;
+            private bool isReadyToFire = false;
 
             public CommunicationHandler()
             {
+                myScript.IGC.UnicastListener.SetMessageCallback("ProcessMessage");
             }
 
-            public void SendTarget()
+            public void SendTarget(Vector3D target)
             {
-
-                myScript.IGC.SendBroadcastMessage(myScript.ConnectionTag, "bonk");
-                myScript.LCD.WriteText("Broadcast message sended\n", true);
+                myScript.LCD.WriteText($"Координаты: {target.X.ToString()}:{target.Y.ToString()}:{target.Z.ToString()} \n", true);
+                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag, 
+                                                    GetMessageString("SendTarget", $"{target.X.ToString()}:{target.Y.ToString()}:{target.Z.ToString()}")))
+                {
+                    myScript.LCD.WriteText("Target wasn't delivered!\n", true);
+                }
             }
 
-            public void GetTarget()
+            public void SendGoToCurrent()
             {
-
+                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag, 
+                                                    GetMessageString("GoToCurrent", "")))
+                {
+                    myScript.LCD.WriteText("Message wasn't delivered!\n", true);
+                }
             }
+
+            public void SendFire()
+            {
+                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag,
+                                                    GetMessageString("Fire", "")))
+                {
+                    myScript.LCD.WriteText("Message wasn't delivered!\n", true);
+                }
+            }
+
+            public void ProcessMessage()
+            {
+                while (myScript.IGC.UnicastListener.HasPendingMessage)
+                {
+                    var message = (string)myScript.IGC.UnicastListener.AcceptMessage().Data;
+                    if (message != null)
+                    {
+                        string[] parameters = message.Split(';');
+                        if (parameters.Length > 0)
+                        {
+                            switch (parameters[0])
+                            {
+                                case "TargetsCount":
+                                    targetscount = int.Parse(parameters[1]);
+                                    break;
+                                case "DistanceToTarget":
+                                    distanceToTarget = double.Parse(parameters[1]);
+                                    break;
+                                case "IsReadyToFire":
+                                    myScript.LCD2.WriteText($"Пришло от бомбера {parameters[1]}\n", true);
+                                    isReadyToFire = bool.Parse(parameters[1]);
+                                    break;
+                                default:
+                                    break;
+
+                            }
+                        }
+                    }
+                }
+            }
+
+            public double GetDistanceToTarget()
+            {
+                return distanceToTarget;
+            }
+
+            public int GetTargetsCount()
+            {
+                return targetscount;
+            }
+
+            public bool GetIsReadyToFire()
+            {
+                return isReadyToFire;
+            }
+
+            public string GetTargetsInfo()
+            {
+                return $"Целей:\n{targetscount}\nРасстояние до текущей:\n{distanceToTarget:F2} м\n\n{(isReadyToFire ? "Готов" : "Не готов")}";
+            }
+
 
             public class MyMessage
             {
@@ -177,6 +260,13 @@ namespace Spotter
                 }
             }
 
+            public string GetMessageString<T>(string command, T data, string typeName = "")
+            {
+                //if (data.GetType() == typeName.Contains("List"))
+                return $"{command};{data};{typeName}";
+            }
+
+            
         }
 
 

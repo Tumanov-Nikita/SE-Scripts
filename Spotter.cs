@@ -98,15 +98,17 @@ namespace Spotter
                     if (spottingHandler.Scan(ScanRange))
                     {
                         var hitPos = (Vector3D)myScript.Target.HitPosition;
-                        //spottingHandler.PrintVector(hitPos, $"Таргет {myScript.coordsCount.ToString()}", true);
-                        communicationHandler.SendTarget(hitPos);
+                        communicationHandler.SendMessage("SendTarget", hitPos);
                     }
                     break;
                 case "GoToCurrent":
-                    communicationHandler.SendGoToCurrent();
+                    communicationHandler.SendMessage("GoToCurrent", "");
+                    break;
+                case "GoToNext":
+                    communicationHandler.SendMessage("GoToNext", "");
                     break;
                 case "Fire":
-                    communicationHandler.SendFire();
+                    communicationHandler.SendMessage("Fire", "");
                     break;
                 case "Clear":
                     spottingHandler.Clear();
@@ -168,31 +170,25 @@ namespace Spotter
                 myScript.IGC.UnicastListener.SetMessageCallback("ProcessMessage");
             }
 
-            public void SendTarget(Vector3D target)
+            public void SendMessage(string command, object data)
             {
-                myScript.LCD.WriteText($"Координаты: {target.X.ToString()}:{target.Y.ToString()}:{target.Z.ToString()} \n", true);
-                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag, 
-                                                    GetMessageString("SendTarget", $"{target.X.ToString()}:{target.Y.ToString()}:{target.Z.ToString()}")))
+                var dateStr = string.Empty;
+                if (data != null)
+                {
+                    if (data.GetType() == typeof(Vector3D))
+                    {
+                        dateStr = GetVectorString((Vector3D)data);
+                    }
+                    else
+                    {
+                        dateStr = data.ToString();
+                    }
+                }
+                //myScript.LCD2.WriteText($"SendMessage command:{command} dateStr:\"{dateStr}\"\n", true);
+                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag,
+                                                    GetMessageString(command, dateStr)))
                 {
                     myScript.LCD.WriteText("Target wasn't delivered!\n", true);
-                }
-            }
-
-            public void SendGoToCurrent()
-            {
-                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag, 
-                                                    GetMessageString("GoToCurrent", "")))
-                {
-                    myScript.LCD.WriteText("Message wasn't delivered!\n", true);
-                }
-            }
-
-            public void SendFire()
-            {
-                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag,
-                                                    GetMessageString("Fire", "")))
-                {
-                    myScript.LCD.WriteText("Message wasn't delivered!\n", true);
                 }
             }
 
@@ -215,7 +211,6 @@ namespace Spotter
                                     distanceToTarget = double.Parse(parameters[1]);
                                     break;
                                 case "IsReadyToFire":
-                                    myScript.LCD2.WriteText($"Пришло от бомбера {parameters[1]}\n", true);
                                     isReadyToFire = bool.Parse(parameters[1]);
                                     break;
                                 default:
@@ -240,6 +235,11 @@ namespace Spotter
             public bool GetIsReadyToFire()
             {
                 return isReadyToFire;
+            }
+
+            public string GetVectorString(Vector3D vector)
+            {
+                return $"{vector.X.ToString()}:{vector.Y.ToString()}:{vector.Z.ToString()}";
             }
 
             public string GetTargetsInfo()

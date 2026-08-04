@@ -48,7 +48,7 @@ namespace PlanetaryWarCopter
 
         IMyShipController Controller;
         Vector3D CurrentDropPoint;
-        bool AligningEnabled;
+        
 
         IMyTextPanel Display;
 
@@ -84,14 +84,14 @@ namespace PlanetaryWarCopter
         public Program()
         {
             myScript = this;
-            
-
             Controller = GridTerminalSystem.GetBlockWithName(ControllerName) as IMyShipController;
             Display = GridTerminalSystem.GetBlockWithName(DisplayName) as IMyTextPanel;
             scanningHandler = new ScanningHandler();
             bombingHandler = new BombingHandler(Controller);
             flightHandler = new FlightHandler(Controller, Display);
             communicationHandler = new CommunicationHandler();
+
+            CurrentDropPoint = Vector3D.Zero;
 
             Runtime.UpdateFrequency = UpdateFrequency.Update1;
 
@@ -118,18 +118,17 @@ namespace PlanetaryWarCopter
                     bombingHandler.SetWarheadsArmed(false);
                     break;
                 case "GoToCurrent":
-                    AligningEnabled = true;
                     flightHandler.GoToCurrent();
                     break;
                 case "GoToNext"://TODO
                     flightHandler.IsMoving = true;
                     break;
                 case "StartAlign":
-                    AligningEnabled = true;
+                    flightHandler.AligningEnabled = true;
                     break;
                 case "StopAlign":
                     flightHandler.IsMoving = false;
-                    AligningEnabled = false;
+                    flightHandler.AligningEnabled = false;
                     flightHandler.StopAllGyros();
                     flightHandler.StopAllThrusters();
                     break;
@@ -146,7 +145,7 @@ namespace PlanetaryWarCopter
             }
 
             
-            if (AligningEnabled)
+            if (flightHandler.AligningEnabled)
             {
                 flightHandler.GravitationAligning();
             }
@@ -154,28 +153,15 @@ namespace PlanetaryWarCopter
             {
                 if (flightHandler.MovementOnVectorLinear(CurrentDropPoint, 30, false))
                 {
-                    if (!IGC.SendUnicastMessage(SpotterAddress, myScript.ConnectionTag,
-                                    communicationHandler.GetMessageString("IsReadyToFire", true.ToString())))
-                    {
-                        Display.WriteText("Message wasn't delivered!\n", true);
-                    }
+                    myScript.communicationHandler.SendMessage("IsReadyToFire", true);
                     flightHandler.IsMoving = false;
-                    AligningEnabled = false;
+                    flightHandler.AligningEnabled = false;
                     flightHandler.StopAllGyros();
                     flightHandler.StopAllThrusters();
                 }
                 else
                 {
-                    if (!IGC.SendUnicastMessage(SpotterAddress, myScript.ConnectionTag,
-                                    communicationHandler.GetMessageString("DistanceToTarget", bombingHandler.GetDistanceToTarget(CurrentDropPoint).ToString())))
-                    {
-                        Display.WriteText("Message wasn't delivered!\n", true);
-                    }
-                    else
-                    {
-                        Display.WriteText($"Main DistanceToTarget={bombingHandler.GetDistanceToTarget(CurrentDropPoint)}\n", true);
-                    }
-
+                    myScript.communicationHandler.SendMessage("DistanceToTarget", bombingHandler.GetDistanceToTarget(CurrentDropPoint));
                 }
             }
 
@@ -247,37 +233,27 @@ namespace PlanetaryWarCopter
             public void AddTarget(Vector3D targetCoords)
             {
                 _targets.Add(targetCoords);
-                
-                if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
-                    myScript.communicationHandler.GetMessageString("TargetsCount", _targets.Count.ToString())))
-                {
-                    _lcd.WriteText("Message wasn't delivered!\n", true);
-                }
+                myScript.communicationHandler.SendMessage("TargetsCount", _targets.Count);
             }
 
-            public void DeleteTarget()
-            {
-                if (_targets.Count > 0)
-                {
-                    _targets.RemoveAt(_targets.Count - 1);
-                    if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
-                        myScript.communicationHandler.GetMessageString("TargetsCount", _targets.Count.ToString())))
-                    {
-                        _lcd.WriteText("Message wasn't delivered!\n", true);
-                    }
-                }
-            }
-
-            public void DeleteCurrentTarget()
+            public void MarkOffCurrentTarget()
             {
                 if (_targets.Count > 0)
                 {
                     _targets.RemoveAt(0);
-                    if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
-                        myScript.communicationHandler.GetMessageString("TargetsCount", _targets.Count.ToString())))
+                    myScript.communicationHandler.SendMessage("TargetsCount", _targets.Count);
+                    var nextTarget = GetCurrentTarget();
+                    if (nextTarget.IsZero())
                     {
-                        _lcd.WriteText("Message wasn't delivered!\n", true);
+                        myScript.CurrentDropPoint = Vector3D.Zero;
+                        myScript.communicationHandler.SendMessage("DistanceToTarget", 0);
                     }
+                    else 
+                    {
+                        myScript.CurrentDropPoint = GetDropPoint(nextTarget);
+                        myScript.communicationHandler.SendMessage("DistanceToTarget", GetDistanceToTarget(myScript.CurrentDropPoint));
+                    }
+                    
                 }
             }
 
@@ -294,28 +270,24 @@ namespace PlanetaryWarCopter
             public void ProccessTarget(Vector3D target)
             {
                 _targets.Add(target);
-                if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
-                        myScript.communicationHandler.GetMessageString("TargetsCount", _targets.Count.ToString())))
+                myScript.communicationHandler.SendMessage("TargetsCount", _targets.Count);
+                if (_targets.Count == 1)
                 {
-                    _lcd.WriteText("Message wasn't delivered!\n", true);
+                    myScript.CurrentDropPoint = GetDropPoint(target);
+                    myScript.communicationHandler.SendMessage("DistanceToTarget", GetDistanceToTarget(myScript.CurrentDropPoint));
                 }
-                else
-                {
-                    //_lcd.WriteText($"ProccessTarget TargetsCount={_targets.Count.ToString()}\n", true);
-                }
-
             }
 
             public Vector3D GetDropPoint(Vector3D targetCoords)
             {
                 double elevationAboveSurface = 0;
                 _controller.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationAboveSurface);
-                myScript.Display.WriteText($"elevationAboveSurface = {elevationAboveSurface}\n", true);
-                myScript.Display.WriteText(myScript.GetVectorString(PlanetCenter, "PlanetCenter"), true);
-                myScript.Display.WriteText(myScript.GetVectorString(targetCoords, "targetCoords"), true);
-                myScript.Display.WriteText(myScript.GetVectorString(Vector3D.Normalize(targetCoords - PlanetCenter), "targetCoords - PlanetCenter"), true);
+                //myScript.Display.WriteText($"elevationAboveSurface = {elevationAboveSurface}\n", true);
+                //myScript.Display.WriteText(myScript.GetVectorString(PlanetCenter, "PlanetCenter"), true);
+                //myScript.Display.WriteText(myScript.GetVectorString(targetCoords, "targetCoords"), true);
+                //myScript.Display.WriteText(myScript.GetVectorString(Vector3D.Normalize(targetCoords - PlanetCenter), "targetCoords - PlanetCenter"), true);
                 Vector3D dropPoint = Vector3D.Normalize(targetCoords - PlanetCenter) * (targetCoords.Length() + elevationAboveSurface);
-                myScript.Display.WriteText(myScript.GetVectorString(dropPoint, "DropPoint"), true);
+                //myScript.Display.WriteText(myScript.GetVectorString(dropPoint, "DropPoint"), true);
                 return dropPoint;
             }
 
@@ -369,6 +341,7 @@ namespace PlanetaryWarCopter
             public Vector3D ForwardVector;
             List<IMyGyro> Gyroscopes;
             public bool IsMoving;
+            public bool AligningEnabled;
 
             public FlightHandler(IMyShipController controller, IMyTextPanel lcd)
             {
@@ -424,21 +397,17 @@ namespace PlanetaryWarCopter
 
             public void GoToCurrent()
             {
-                myScript.CurrentDropPoint = myScript.bombingHandler.GetDropPoint(myScript.bombingHandler.GetCurrentTarget());
-                ForwardVector = Vector3D.Normalize(myScript.bombingHandler.GetCurrentTarget() - _controller.GetPosition());
-                IsMoving = true;
-                if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
-                                    myScript.communicationHandler.GetMessageString("IsReadyToFire", false.ToString())))
+                if (myScript.bombingHandler.GetTargets().Count > 0)
                 {
-                    _lcd.WriteText("Message wasn't delivered!\n", true);
+                    myScript.CurrentDropPoint = myScript.bombingHandler.GetDropPoint(myScript.bombingHandler.GetCurrentTarget());
+                    ForwardVector = Vector3D.Normalize(myScript.bombingHandler.GetCurrentTarget() - _controller.GetPosition());
+                    AligningEnabled = true;
+                    IsMoving = true;
                 }
-                else
-                {
-                    _lcd.WriteText($"GoToCurrent IsReadyToFire={!IsMoving}\n", true);
-                }
+                myScript.communicationHandler.SendMessage("IsReadyToFire", false);
             }
-            
-           
+
+
 
             public void GravitationAligning()
             {
@@ -631,6 +600,28 @@ namespace PlanetaryWarCopter
                 myScript.IGC.UnicastListener.SetMessageCallback("ProcessMessage");
             }
 
+            public void SendMessage(string command, object data)
+            {
+                var dateStr = string.Empty;
+                if (data != null)
+                {
+                    if (data.GetType() == typeof(Vector3D))
+                    {
+                        dateStr = GetVectorString((Vector3D)data);
+                    }
+                    else
+                    {
+                        dateStr = data.ToString();
+                    }
+                }
+                //myScript.Display.WriteText($"SendMessage command:{command} dateStr:\"{dateStr}\"\n", true);
+                if (!myScript.IGC.SendUnicastMessage(myScript.SpotterAddress, myScript.ConnectionTag,
+                                                    GetMessageString(command, dateStr)))
+                {
+                    myScript.Display.WriteText("Target wasn't delivered!\n", true);
+                }
+            }
+
             public void ProcessMessage()
             {
                 while (myScript.IGC.UnicastListener.HasPendingMessage)
@@ -648,7 +639,10 @@ namespace PlanetaryWarCopter
                                     myScript.bombingHandler.ProccessTarget(target);
                                     break;
                                 case "GoToCurrent":
-                                    myScript.AligningEnabled = true;
+                                    myScript.flightHandler.GoToCurrent();
+                                    break;
+                                case "GoToNext":
+                                    myScript.bombingHandler.MarkOffCurrentTarget();
                                     myScript.flightHandler.GoToCurrent();
                                     break;
                                 case "Fire":
@@ -674,6 +668,11 @@ namespace PlanetaryWarCopter
                     vector.Z = Convert.ToDouble(coords[2]);
                 }
                 return vector;
+            }
+
+            public string GetVectorString(Vector3D vector)
+            {
+                return $"{vector.X.ToString()}:{vector.Y.ToString()}:{vector.Z.ToString()}";
             }
 
             public string GetMessageString<T>(string command, T data, string typeName = "")

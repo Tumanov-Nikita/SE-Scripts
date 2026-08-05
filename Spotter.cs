@@ -41,13 +41,12 @@ namespace Spotter
 
 
 
-        IMyTextPanel LCD, LCD2;
+        IMyTextPanel LCD;
         MyDetectedEntityInfo Target;
         IMyTextSurface pbText;
 
         #region Настройки
         public readonly double ScanRange = 10000;
-        public readonly string ConnectionTag = "WarCopter";
         public readonly long BomberAddress = 73332424494781014;
         #endregion
 
@@ -55,8 +54,8 @@ namespace Spotter
 
         public readonly string CameraName = "Камера Споттер";
         public readonly string LCDName = "Экран Споттер";
-        public readonly string LCD2Name = "Экран 2 Споттер";
-        public readonly string AntennaName = "Антенна Споттер";
+        //public readonly string LCD2Name = "Экран 2 Споттер";
+
 
         #endregion
 
@@ -72,9 +71,9 @@ namespace Spotter
             
 
             LCD = GridTerminalSystem.GetBlockWithName(LCDName) as IMyTextPanel;
-            LCD2 = GridTerminalSystem.GetBlockWithName(LCD2Name) as IMyTextPanel;
+            //LCD2 = GridTerminalSystem.GetBlockWithName(LCD2Name) as IMyTextPanel;
 
-            spottingHandler = new SpottingHandler(LCD);
+            spottingHandler = new SpottingHandler();
             communicationHandler = new CommunicationHandler();
 
             
@@ -129,13 +128,13 @@ namespace Spotter
 
         private class SpottingHandler
         {
-            private readonly IMyTextPanel _lcd;
+            //private readonly IMyTextPanel _lcd;
             private readonly IMyCameraBlock _camera;
 
 
-            public SpottingHandler(IMyTextPanel lcd)
+            public SpottingHandler()
             {
-                _lcd = lcd;
+                //_lcd = lcd;
                 _camera = myScript.GridTerminalSystem.GetBlockWithName(myScript.CameraName) as IMyCameraBlock;
                 if (_camera != null)
                     _camera.EnableRaycast = true;
@@ -149,12 +148,12 @@ namespace Spotter
 
             public void Clear()
             {
-                _lcd.WriteText("");
+                //_lcd.WriteText("");
             }
 
             public void PrintVector(Vector3D vector, string name, bool append, string colorHEX = "#FF00FF")
             {
-                _lcd.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
+                //_lcd.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
             }
 
         }
@@ -184,11 +183,9 @@ namespace Spotter
                         dateStr = data.ToString();
                     }
                 }
-                //myScript.LCD2.WriteText($"SendMessage command:{command} dateStr:\"{dateStr}\"\n", true);
-                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, myScript.ConnectionTag,
-                                                    GetMessageString(command, dateStr)))
+                if (!myScript.IGC.SendUnicastMessage(myScript.BomberAddress, command, dateStr))
                 {
-                    myScript.LCD.WriteText("Target wasn't delivered!\n", true);
+                    //myScript.LCD.WriteText("Target wasn't delivered!\n", true);
                 }
             }
 
@@ -196,29 +193,22 @@ namespace Spotter
             {
                 while (myScript.IGC.UnicastListener.HasPendingMessage)
                 {
-                    var message = (string)myScript.IGC.UnicastListener.AcceptMessage().Data;
-                    if (message != null)
+                    var message = myScript.IGC.UnicastListener.AcceptMessage();
+                    switch (message.Tag)
                     {
-                        string[] parameters = message.Split(';');
-                        if (parameters.Length > 0)
-                        {
-                            switch (parameters[0])
-                            {
-                                case "TargetsCount":
-                                    targetscount = int.Parse(parameters[1]);
-                                    break;
-                                case "DistanceToTarget":
-                                    distanceToTarget = double.Parse(parameters[1]);
-                                    break;
-                                case "IsReadyToFire":
-                                    isReadyToFire = bool.Parse(parameters[1]);
-                                    break;
-                                default:
-                                    break;
-
-                            }
-                        }
-                    }
+                        case "TargetsCount":
+                            targetscount = int.Parse((string)message.Data);
+                            break;
+                        case "DistanceToTarget":
+                            distanceToTarget = double.Parse((string)message.Data);
+                            break;
+                        case "IsReadyToFire":
+                            isReadyToFire = bool.Parse((string)message.Data);
+                            break;
+                        default:
+                            break;
+                    }                    
+                    
                 }
             }
 
@@ -246,27 +236,7 @@ namespace Spotter
             {
                 return $"Целей:\n{targetscount}\nРасстояние до текущей:\n{distanceToTarget:F2} м\n\n{(isReadyToFire ? "Готов" : "Не готов")}";
             }
-
-
-            public class MyMessage
-            {
-                public string Command { get; set; }
-                public object Data { get; set; }
-
-                public MyMessage(string command, object data)
-                {
-                    Command = command;
-                    Data = data;
-                }
-            }
-
-            public string GetMessageString<T>(string command, T data, string typeName = "")
-            {
-                //if (data.GetType() == typeName.Contains("List"))
-                return $"{command};{data};{typeName}";
-            }
-
-            
+                        
         }
 
 

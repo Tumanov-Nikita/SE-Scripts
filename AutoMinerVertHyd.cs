@@ -39,7 +39,7 @@ namespace AutoMinerVertHyd
          * Блок дистанционного управления х1
          * Программный блок х1
          * Коннектор х1
-         * Полет ИИ х1
+         * Полет ИИ х1 (Изначальное положение: Off, Поведение ИИ On)
          * Регистратор событий ИИ x2:
          *  Регистратор событий ИИ К Базе:
          *   - Режим точности On; Выравнивание по гравитации Off
@@ -62,11 +62,11 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Количество шахт квадратно-гнездового метода в ширину
         /// </summary>
-        public readonly byte ShaftM = 2;
+        public readonly byte ShaftM = 4;
         /// <summary>
         /// Количество шахт квадратно-гнездового метода в длину
         /// </summary>
-        public readonly byte ShaftN = 2;
+        public readonly byte ShaftN = 4;
         /// <summary>
         /// Порог заполнения хранилищ, в %
         /// </summary>
@@ -94,11 +94,11 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор для сигнала гироскопам
         /// </summary>
-        public readonly float GyroMult = 2;
+        public readonly float GyroMult = 5;
         /// <summary>
         /// Ограничение скорости для перемещения на поверхности, в м/c
         /// </summary>
-        public readonly float SurfaceSpeedLimit = 600;
+        public readonly float SurfaceSpeedLimit = 500;
         /// <summary>
         /// Ограничение скорости для перемещения в шахте, в м/c
         /// </summary>
@@ -114,11 +114,11 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
         /// </summary>
-        public readonly float AboveGroundSpeedMultiplier = 20f;
+        public readonly float AboveGroundSpeedMultiplier = 40f;
         /// <summary>
         /// Минимальная высота над поверхностью для ускоренного перемещения в режиме выкапывания шахты
         /// </summary>
-        public readonly float AboveGroundSpeedHeight = 2f;
+        public readonly float AboveGroundSpeedHeight = 0.5f;
         /// <summary>
         /// Мультипликатор высоты для дуги перемещения, рекомендуется от 0.3 до 1
         /// </summary>
@@ -127,18 +127,17 @@ namespace AutoMinerVertHyd
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
-        public readonly string EventControllerName = "Контроллер события ИИ Выгрузка";
         public readonly string FlightControllerName = "Полет ИИ Майнер";
         public readonly string RemoteControllerName = "ДУ ИИ Майнер";
         public readonly string TimerToBaseName = "Таймер к Базе для ИИ Майнер";
         public readonly string TimerFromBaseName = "Таймер от Базы для ИИ Майнер";
         public readonly string StoragesGroupName = "Контейнеры Майнер";
-        public readonly string ConnectorGroupName = "Коннекторы Майнер";
-        public readonly string GyroscopesGroupName = "Гироскопы Майнер";
-        public readonly string ThrustersGroupName = "Двигатели Майнер";
-        public readonly string BatteriesGroupName = "Батареи Майнер";
-        public readonly string TanksGroupName = "Баки Майнер";
-        public readonly string DrillsGroupName = "Буры Майнер";
+        //public readonly string ConnectorGroupName = "Коннекторы Майнер";
+        //public readonly string GyroscopesGroupName = "Гироскопы Майнер";
+        //public readonly string ThrustersGroupName = "Двигатели Майнер";
+        //public readonly string BatteriesGroupName = "Батареи Майнер";
+        //public readonly string TanksGroupName = "Баки Майнер";
+        //public readonly string DrillsGroupName = "Буры Майнер";
         #endregion
 
         private char CurrentIcon;
@@ -253,7 +252,7 @@ namespace AutoMinerVertHyd
             private readonly List<IMyShipDrill> Drills;
             private readonly List<IMyGyro> Gyros;
             private readonly List<IMyShipConnector> Connectors;
-            private readonly IMyBlockGroup StoragesGroup, BatteriesGroup, TanksGroup, DrillsGroup, ConnectorsGroup, GyroscopesGroup, ThrustersGroup;
+            private readonly IMyBlockGroup StoragesGroup;
             private readonly List<IMyThrust> ThrForward = new List<IMyThrust>();
             private readonly List<IMyThrust> ThrBackward = new List<IMyThrust>();
             private readonly List<IMyThrust> ThrRight = new List<IMyThrust>();
@@ -284,6 +283,8 @@ namespace AutoMinerVertHyd
             private bool ArcInitialized = false;
             private bool ArcIsAscending = true;
 
+            IMyTextPanel display;
+
             #endregion
 
             public MiningHandler()
@@ -304,34 +305,25 @@ namespace AutoMinerVertHyd
 
 
                 Gyros = new List<IMyGyro>();
-                GyroscopesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.GyroscopesGroupName);
-                GyroscopesGroup.GetBlocksOfType(Gyros);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyGyro>(Gyros, (a) => a.IsSameConstructAs(RemoteControl));
                 Connectors = new List<IMyShipConnector>();
-                ConnectorsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ConnectorGroupName);
-                ConnectorsGroup.GetBlocksOfType(Connectors);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyShipConnector>(Connectors, (a) => a.IsSameConstructAs(RemoteControl));
                 Storages = new List<IMyInventoryOwner>();
                 StoragesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.StoragesGroupName);
                 StoragesGroup.GetBlocksOfType(Storages);
                 Batteries = new List<IMyBatteryBlock>();
-                BatteriesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.BatteriesGroupName);
-                BatteriesGroup.GetBlocksOfType(Batteries);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyBatteryBlock>(Batteries, (a) => a.IsSameConstructAs(RemoteControl));
                 Tanks = new List<IMyGasTank>();
-                TanksGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.TanksGroupName);
-                if (TanksGroup != null)
-                {
-                    TanksGroup.GetBlocksOfType(Tanks);
-                }
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyGasTank>(Tanks, (a) => a.IsSameConstructAs(RemoteControl));
                 Drills = new List<IMyShipDrill>();
-                DrillsGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.DrillsGroupName);
-                DrillsGroup.GetBlocksOfType(Drills);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyShipDrill>(Drills, (a) => a.IsSameConstructAs(RemoteControl));
 
                 //Инциализация двигателей по направлениям
                 Matrix RemConMatrix = new Matrix();
                 RemoteControl.Orientation.GetMatrix(out RemConMatrix);
                 Matrix ThrMatrix = new Matrix();
                 List<IMyThrust> ThrTemp = new List<IMyThrust>();
-                ThrustersGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ThrustersGroupName);
-                ThrustersGroup.GetBlocksOfType(ThrTemp);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyThrust>(ThrTemp, (a) => (a.IsSameConstructAs(RemoteControl)));
                 foreach (IMyThrust thr in ThrTemp)
                 {
                     thr.Orientation.GetMatrix(out ThrMatrix);
@@ -368,6 +360,9 @@ namespace AutoMinerVertHyd
                 }
 
                 RemoteControl.TryGetPlanetPosition(out PlanetCenter);
+
+
+                display = (IMyTextPanel)myScript.GridTerminalSystem.GetBlockWithName("LCD panel");
 
                 #endregion
             }
@@ -419,7 +414,8 @@ namespace AutoMinerVertHyd
                     var currentValidShaft = GetCurrentShaft();
                     if (!currentValidShaft.startCoords.IsZero())
                     {
-                        currentValidShaft.currDepthCoords = RemoteControl.GetPosition();
+                        currentValidShaft.currDepthCoords = RemoteControl.GetPosition() + 
+                            (Vector3D.Normalize(currentValidShaft.startCoords - RemoteControl.GetPosition()) * 2);
                     }
                     SetDrillsEnabled(false);
                     SetGyrosOverride(false);
@@ -580,6 +576,7 @@ namespace AutoMinerVertHyd
                 GravitationAligning();
                 if (CheckStorageAndTanksAndBatteries() && !IsMiningComplete)
                 {
+                    display.WriteText($"IsGridAlignedToGravity = {IsGridAlignedToGravity}\n", true);
                     if (IsGridAlignedToGravity)
                     {
                         if (MineCenterPosition.IsZero())
@@ -672,10 +669,13 @@ namespace AutoMinerVertHyd
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = (float)axisGrav.Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
-                    gyro.Roll = (float)axisGrav.Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
-                    gyro.Yaw = (float)axisForward.Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
+                    gyro.Pitch = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
+                    gyro.Roll = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
+                    gyro.Yaw = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
                 }
+                display.WriteText($"axisGrav.Length() = {axisGrav.Length()}\n", false);
+                display.WriteText($"axisForward.Length() = {axisForward.Length()}\n", true);
+                display.WriteText($"Sum of axes = {axisGrav.Length() + axisForward.Length()}\n", true);
                 IsGridAlignedToGravity = axisGrav.Length() + axisForward.Length() < 0.01;
             }
             /// <summary>
@@ -888,6 +888,9 @@ namespace AutoMinerVertHyd
 
                 double distToTarget = Vector3D.Distance(currentPos, ArcTargetPos);
                 Vector3D linearVelocity = RemoteControl.GetShipVelocities().LinearVelocity;
+                display.WriteText($"distToTarget < MovingAccuracy = {distToTarget < myScript.AcceptableMovingAccuracy * 4}\n", false);
+                display.WriteText($"linearVelocity <= 5 = {linearVelocity.Length() <= 5}\n", true);
+                //display.WriteText($"distToTarget = {distToTarget}\n", true);
 
                 if (distToTarget < myScript.AcceptableMovingAccuracy * 4 && linearVelocity.Length() <= 5)
                 {
@@ -903,6 +906,9 @@ namespace AutoMinerVertHyd
                 Vector3D rejApex = Vector3D.Reject(ArcApexPos - currentPos, gravNorm);
                 ArcIsAscending = rejApex.Dot(Vector3D.Normalize(rejTarget)) > 0 && ArcIsAscending;
 
+                PrintVector(ArcApexPos, "Apex", true);
+                PrintVector(ArcTargetPos, "Target", true);
+                display.WriteText($"ArcIsAscending = {ArcIsAscending}\n", true);
                 OrientShipForArc();
 
                 Vector3D currentTarget = ArcIsAscending ? ArcApexPos : ArcTargetPos;
@@ -915,7 +921,9 @@ namespace AutoMinerVertHyd
                 double shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
                 double stopDist = 0;
                 double availableThrust = 0;
-
+                
+                display.WriteText($"speedAlongPath > 0 = {speedAlongPath > 0}\n", true);
+                display.WriteText($"linearVelocity = {linearVelocity.Length():F}\n", true);
                 if (speedAlongPath > 0)
                 {
 
@@ -926,7 +934,7 @@ namespace AutoMinerVertHyd
                 else
                 {
                     availableThrust = UpThrustEff - (shipMass * (RemoteControl.GetNaturalGravity().Dot(Vector3D.Normalize(linearVelocity))));
-                    stopDist = ((0.5 * shipMass * speedAlongPath * speedAlongPath) / availableThrust) + (linearVelocity.Length() * 0.03);
+                    stopDist = ((0.5 * shipMass * speedAlongPath * speedAlongPath) / availableThrust) + (linearVelocity.Length() * 0.3);
 
                 }
                 bool shouldAccelerate = distToCurrentTarget > stopDist && Math.Abs(linearVelocity.Length()) < speedLimit;
@@ -994,14 +1002,28 @@ namespace AutoMinerVertHyd
             /// <returns>Возвращает true, если выравнивание завершено</returns>
             private bool OrientShipForArc()
             {
-                Vector3D targetPoint = ArcIsAscending ? ArcApexPos : ArcTargetPos;
-                Vector3D toTargetNorm = Vector3D.Normalize(targetPoint - RemoteControl.GetPosition());
-                Vector3D axisTarget = toTargetNorm.Cross(RemoteControl.WorldMatrix.Up);
-                if (!ArcIsAscending)
+                Vector3D headingVector = ArcIsAscending ? RemoteControl.WorldMatrix.Up : RemoteControl.WorldMatrix.Down;
+                Vector3D currentPos = RemoteControl.GetPosition();
+                Vector3D toTargetNorm = Vector3D.Normalize((ArcIsAscending ? ArcApexPos : ArcTargetPos) - currentPos);
+                Vector3D axisTarget = toTargetNorm.Cross(headingVector);
+                if (toTargetNorm.Dot(headingVector) < 0)
                 {
-                    axisTarget = -axisTarget;
+                    axisTarget = Vector3D.Normalize(axisTarget);
                 }
-                Vector3D forwardTargetVector = Vector3D.Normalize(Vector3D.Reject(ArcTargetPos - RemoteControl.GetPosition(), ArcApexPos - RemoteControl.GetPosition()));
+
+                Vector3D forwardTargetVector;
+
+                if (ArcIsAscending)
+                {
+                    forwardTargetVector = Vector3D.Normalize(
+                    Vector3D.Reject(
+                        Vector3D.Normalize(ArcTargetPos - ArcStartPos),
+                        Vector3D.Normalize(ArcApexPos - ArcStartPos)));
+                }
+                else
+                {
+                    forwardTargetVector = Vector3D.Zero;
+                }
                 Vector3D axisForward = forwardTargetVector.Cross(RemoteControl.WorldMatrix.Forward);
                 if (forwardTargetVector.Dot(RemoteControl.WorldMatrix.Forward) < 0)
                 {
@@ -1011,9 +1033,10 @@ namespace AutoMinerVertHyd
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Right) * myScript.GyroMult;
-                    gyro.Roll = (float)axisTarget.Dot(RemoteControl.WorldMatrix.Backward) * myScript.GyroMult;
-                    gyro.Yaw = (float)axisForward.Dot(RemoteControl.WorldMatrix.Up) * myScript.GyroMult;
+
+                    gyro.Yaw = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
+                    gyro.Pitch = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
+                    gyro.Roll = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
                 }
 
                 return axisTarget.Length() + axisForward.Length() < 0.01;
@@ -1210,6 +1233,13 @@ namespace AutoMinerVertHyd
                 }
                 return new ShaftMark();
             }
+
+            // Testing
+            private void PrintVector(Vector3D vector, string name, bool append, string colorHEX = "#FF00FF")
+            {
+                display.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
+            }
+            // Testing
 
             public string GetCurrentMiningProgress()
             {

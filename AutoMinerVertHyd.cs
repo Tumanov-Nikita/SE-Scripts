@@ -52,7 +52,7 @@ namespace AutoMinerVertHyd
          * Таймер х3:
          *  Таймер К Базе:
          *   - Полет ИИ Поведение ИИ On; Регистратор ИИ К Базе Поведение ИИ On; Регистратор ИИ К Базе Воспроизвести
-         *  Таймер коннект:
+         *  Таймер коннект (3 секунды):
          *   - Коннектор запереть On; Баки Накопитель On; Батареи Зарядка Зарядка
          *  Таймер От Базы:
          *   - Полет ИИ Поведение ИИ On; Регистратор ИИ От Базы Поведение ИИ On; Регистратор ИИ От Базы Воспроизвести; Режим точности Off; Выравнивание по гравитации On
@@ -92,10 +92,6 @@ namespace AutoMinerVertHyd
         /// </summary>
         public readonly float ArcHeightMaximum = 14000;
         /// <summary>
-        /// Мультипликатор для сигнала гироскопам
-        /// </summary>
-        public readonly float GyroMult = 5;
-        /// <summary>
         /// Ограничение скорости для перемещения на поверхности, в м/c
         /// </summary>
         public readonly float SurfaceSpeedLimit = 500;
@@ -132,12 +128,6 @@ namespace AutoMinerVertHyd
         public readonly string TimerToBaseName = "Таймер к Базе для ИИ Майнер";
         public readonly string TimerFromBaseName = "Таймер от Базы для ИИ Майнер";
         public readonly string StoragesGroupName = "Контейнеры Майнер";
-        //public readonly string ConnectorGroupName = "Коннекторы Майнер";
-        //public readonly string GyroscopesGroupName = "Гироскопы Майнер";
-        //public readonly string ThrustersGroupName = "Двигатели Майнер";
-        //public readonly string BatteriesGroupName = "Батареи Майнер";
-        //public readonly string TanksGroupName = "Баки Майнер";
-        //public readonly string DrillsGroupName = "Буры Майнер";
         #endregion
 
         private char CurrentIcon;
@@ -282,8 +272,7 @@ namespace AutoMinerVertHyd
             private Vector3D ArcPlaneNormal;
             private bool ArcInitialized = false;
             private bool ArcIsAscending = true;
-
-            IMyTextPanel display;
+            private int GyroMult = 1;
 
             #endregion
 
@@ -360,9 +349,6 @@ namespace AutoMinerVertHyd
                 }
 
                 RemoteControl.TryGetPlanetPosition(out PlanetCenter);
-
-
-                display = (IMyTextPanel)myScript.GridTerminalSystem.GetBlockWithName("LCD panel");
 
                 #endregion
             }
@@ -576,7 +562,6 @@ namespace AutoMinerVertHyd
                 GravitationAligning();
                 if (CheckStorageAndTanksAndBatteries() && !IsMiningComplete)
                 {
-                    display.WriteText($"IsGridAlignedToGravity = {IsGridAlignedToGravity}\n", true);
                     if (IsGridAlignedToGravity)
                     {
                         if (MineCenterPosition.IsZero())
@@ -666,16 +651,14 @@ namespace AutoMinerVertHyd
                     axisForward = Vector3D.Normalize(axisForward);
                 }
 
+                CalculateGyroMult();
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
-                    gyro.Roll = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
-                    gyro.Yaw = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
+                    gyro.Pitch = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Right) * GyroMult;
+                    gyro.Roll = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Backward) * GyroMult;
+                    gyro.Yaw = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Up) * GyroMult;
                 }
-                display.WriteText($"axisGrav.Length() = {axisGrav.Length()}\n", false);
-                display.WriteText($"axisForward.Length() = {axisForward.Length()}\n", true);
-                display.WriteText($"Sum of axes = {axisGrav.Length() + axisForward.Length()}\n", true);
                 IsGridAlignedToGravity = axisGrav.Length() + axisForward.Length() < 0.01;
             }
             /// <summary>
@@ -888,9 +871,6 @@ namespace AutoMinerVertHyd
 
                 double distToTarget = Vector3D.Distance(currentPos, ArcTargetPos);
                 Vector3D linearVelocity = RemoteControl.GetShipVelocities().LinearVelocity;
-                display.WriteText($"distToTarget < MovingAccuracy = {distToTarget < myScript.AcceptableMovingAccuracy * 4}\n", false);
-                display.WriteText($"linearVelocity <= 5 = {linearVelocity.Length() <= 5}\n", true);
-                //display.WriteText($"distToTarget = {distToTarget}\n", true);
 
                 if (distToTarget < myScript.AcceptableMovingAccuracy * 4 && linearVelocity.Length() <= 5)
                 {
@@ -906,9 +886,6 @@ namespace AutoMinerVertHyd
                 Vector3D rejApex = Vector3D.Reject(ArcApexPos - currentPos, gravNorm);
                 ArcIsAscending = rejApex.Dot(Vector3D.Normalize(rejTarget)) > 0 && ArcIsAscending;
 
-                PrintVector(ArcApexPos, "Apex", true);
-                PrintVector(ArcTargetPos, "Target", true);
-                display.WriteText($"ArcIsAscending = {ArcIsAscending}\n", true);
                 OrientShipForArc();
 
                 Vector3D currentTarget = ArcIsAscending ? ArcApexPos : ArcTargetPos;
@@ -921,9 +898,6 @@ namespace AutoMinerVertHyd
                 double shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
                 double stopDist = 0;
                 double availableThrust = 0;
-                
-                display.WriteText($"speedAlongPath > 0 = {speedAlongPath > 0}\n", true);
-                display.WriteText($"linearVelocity = {linearVelocity.Length():F}\n", true);
                 if (speedAlongPath > 0)
                 {
 
@@ -1030,13 +1004,14 @@ namespace AutoMinerVertHyd
                     axisForward = Vector3D.Normalize(axisForward);
                 }
 
+                CalculateGyroMult();
                 foreach (IMyGyro gyro in Gyros)
                 {
                     gyro.GyroOverride = true;
 
-                    gyro.Yaw = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
-                    gyro.Pitch = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
-                    gyro.Roll = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
+                    gyro.Yaw = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Up) * GyroMult;
+                    gyro.Pitch = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Right) * GyroMult;
+                    gyro.Roll = (float)(axisTarget + axisForward).Dot(gyro.WorldMatrix.Backward) * GyroMult;
                 }
 
                 return axisTarget.Length() + axisForward.Length() < 0.01;
@@ -1133,6 +1108,15 @@ namespace AutoMinerVertHyd
             private float CalculateFillingValue(float threshold)
             {
                 return threshold + ((100 - threshold) * myScript.TanksAndBatteriesFillingCoeff);
+            }
+            /// <summary>
+            /// Вычисляет значение мультипликатора сигнала для гироскопов
+            /// </summary>
+            private void CalculateGyroMult()
+            {
+                double shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
+                int mult = (int)Math.Round(shipMass / (Gyros.Count * 6000));
+                GyroMult = mult;
             }
             /// <summary>
             /// Устанавливает режим работы дрона
@@ -1232,18 +1216,6 @@ namespace AutoMinerVertHyd
                     }
                 }
                 return new ShaftMark();
-            }
-
-            // Testing
-            private void PrintVector(Vector3D vector, string name, bool append, string colorHEX = "#FF00FF")
-            {
-                display.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
-            }
-            // Testing
-
-            public string GetCurrentMiningProgress()
-            {
-                return "";
             }
 
             #endregion

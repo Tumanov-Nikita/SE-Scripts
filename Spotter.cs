@@ -47,7 +47,7 @@ namespace Spotter
 
         #region Настройки
         public readonly double ScanRange = 10000;
-        public readonly long BomberAddress = 73332424494781014;
+        public readonly long BomberAddress = 132647153537962255;
         #endregion
 
         #region Переменные для наименований блоков и групп блоков
@@ -105,6 +105,9 @@ namespace Spotter
                     break;
                 case "GoToNext":
                     communicationHandler.SendMessage("GoToNext", "");
+                    break;
+                case "SetArmed":
+                    communicationHandler.SendMessage("SetArmed", "");
                     break;
                 case "Fire":
                     communicationHandler.SendMessage("Fire", "");

@@ -62,11 +62,11 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Количество шахт квадратно-гнездового метода в ширину
         /// </summary>
-        public readonly byte ShaftM = 4;
+        public readonly byte ShaftM = 2;
         /// <summary>
         /// Количество шахт квадратно-гнездового метода в длину
         /// </summary>
-        public readonly byte ShaftN = 4;
+        public readonly byte ShaftN = 2;
         /// <summary>
         /// Порог заполнения хранилищ, в %
         /// </summary>
@@ -110,7 +110,7 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
         /// </summary>
-        public readonly float AboveGroundSpeedMultiplier = 40f;
+        public readonly float AboveGroundSpeedMultiplier = 6f;
         /// <summary>
         /// Минимальная высота над поверхностью для ускоренного перемещения в режиме выкапывания шахты
         /// </summary>
@@ -1115,7 +1115,7 @@ namespace AutoMinerVertHyd
             private void CalculateGyroMult()
             {
                 double shipMass = RemoteControl.CalculateShipMass().PhysicalMass;
-                int mult = (int)Math.Round(shipMass / (Gyros.Count * 6000));
+                int mult = (int)Math.Round(shipMass / (Gyros.Count * 5000));
                 GyroMult = mult;
             }
             /// <summary>

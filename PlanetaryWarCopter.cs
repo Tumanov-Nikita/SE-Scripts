@@ -58,7 +58,7 @@ namespace PlanetaryWarCopter
         public readonly double ScanRange = 5000;
         public readonly float AcceptableMovingAccuracy = 0.5f;
         public readonly float GyroMult = 0.5f;
-        public readonly long SpotterAddress = 118955180530329664;
+        public readonly long SpotterAddress = 72970061186382229;
 
         #endregion
 
@@ -67,8 +67,6 @@ namespace PlanetaryWarCopter
         public readonly string CameraName = "Камера Вниз Бомбер";
         public readonly string ControllerName = "ДУ Бомбер";
         public readonly string MergeBlockGroupName = "Соединители Бомбер";
-        public readonly string GyroGroupName = "Гироскопы Бомбер";
-        public readonly string ThrustersGroupName = "Ускорители Бомбер";
 
         //public readonly string DisplayName = "Экран Бомбер";
 
@@ -277,8 +275,11 @@ namespace PlanetaryWarCopter
                 //myScript.Display.WriteText(myScript.GetVectorString(PlanetCenter, "PlanetCenter"), true);
                 //myScript.Display.WriteText(myScript.GetVectorString(targetCoords, "targetCoords"), true);
                 //myScript.Display.WriteText(myScript.GetVectorString(Vector3D.Normalize(targetCoords - PlanetCenter), "targetCoords - PlanetCenter"), true);
-                Vector3D dropPoint = Vector3D.Normalize(targetCoords - PlanetCenter) * (targetCoords.Length() + elevationAboveSurface);
-                //myScript.Display.WriteText(myScript.GetVectorString(dropPoint, "DropPoint"), true);
+                Vector3D dropPoint = (Vector3D.Normalize(targetCoords - PlanetCenter) * ((targetCoords - PlanetCenter).Length() + elevationAboveSurface)) + PlanetCenter;
+                myScript.PrintVector(dropPoint, "DropPoint", false);
+                myScript.PrintVector(PlanetCenter, "PlanetCenter", true);
+                myScript.PrintVector(targetCoords, "targetCoords", true);
+                myScript.pbText.WriteText($"elevationAboveSurface = {elevationAboveSurface}\n", true);
                 return dropPoint;
             }
 
@@ -314,7 +315,6 @@ namespace PlanetaryWarCopter
         {
             
 
-            private readonly IMyBlockGroup GyroscopesGroup, ThrustersGroup;
             private readonly IMyShipController _controller;
             private readonly List<IMyThrust> ThrForward = new List<IMyThrust>();
             private readonly List<IMyThrust> ThrBackward = new List<IMyThrust>();
@@ -337,16 +337,14 @@ namespace PlanetaryWarCopter
             {
                 _controller = controller;
                 Gyroscopes = new List<IMyGyro>();
-                GyroscopesGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.GyroGroupName);
-                GyroscopesGroup.GetBlocksOfType(Gyroscopes);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyGyro>(Gyroscopes, (a) => a.IsSameConstructAs(_controller));
 
                 //Инциализация двигателей по направлениям
                 Matrix RemConMatrix = new Matrix();
                 _controller.Orientation.GetMatrix(out RemConMatrix);
                 Matrix ThrMatrix = new Matrix();
                 List<IMyThrust> ThrTemp = new List<IMyThrust>();
-                ThrustersGroup = myScript.GridTerminalSystem.GetBlockGroupWithName(myScript.ThrustersGroupName);
-                ThrustersGroup.GetBlocksOfType(ThrTemp);
+                myScript.GridTerminalSystem.GetBlocksOfType<IMyThrust>(ThrTemp, (a) => (a.IsSameConstructAs(_controller)));
                 foreach (IMyThrust thr in ThrTemp)
                 {
                     thr.Orientation.GetMatrix(out ThrMatrix);
@@ -389,7 +387,7 @@ namespace PlanetaryWarCopter
                 if (myScript.bombingHandler.GetTargets().Count > 0)
                 {
                     myScript.CurrentDropPoint = myScript.bombingHandler.GetDropPoint(myScript.bombingHandler.GetCurrentTarget());
-                    ForwardVector = Vector3D.Normalize(myScript.bombingHandler.GetCurrentTarget() - _controller.GetPosition());
+                    ForwardVector = Vector3D.Normalize(myScript.CurrentDropPoint - _controller.GetPosition());
                     AligningEnabled = true;
                     IsMoving = true;
                 }
@@ -627,6 +625,9 @@ namespace PlanetaryWarCopter
                             myScript.bombingHandler.MarkOffCurrentTarget();
                             myScript.flightHandler.GoToCurrent();
                             break;
+                        case "SetArmed":
+                            myScript.bombingHandler.SetWarheadsArmed(true);
+                            break;
                         case "Fire":
                             myScript.bombingHandler.Fire();
                             break;
@@ -655,7 +656,10 @@ namespace PlanetaryWarCopter
             }
 
         }
-
+        private void PrintVector(Vector3D vector, string name, bool append, string colorHEX = "#FF00FF")
+        {
+            myScript.pbText.WriteText($"GPS:{name}:{vector.X}:{vector.Y}:{vector.Z}:{colorHEX}:\n", append);
+        }
 
 
 

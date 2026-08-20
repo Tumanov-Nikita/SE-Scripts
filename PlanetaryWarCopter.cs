@@ -57,7 +57,6 @@ namespace PlanetaryWarCopter
         #region Настройки
         public readonly double ScanRange = 5000;
         public readonly float AcceptableMovingAccuracy = 0.5f;
-        public readonly float GyroMult = 0.5f;
         public readonly long SpotterAddress = 72970061186382229;
 
         #endregion
@@ -328,6 +327,7 @@ namespace PlanetaryWarCopter
             private readonly double LeftThrustEff = 0;
             private readonly double UpThrustEff = 0;
             private readonly double DownThrustEff = 0;
+            public int GyroMult = 1;
             public Vector3D ForwardVector;
             List<IMyGyro> Gyroscopes;
             public bool IsMoving;
@@ -404,6 +404,7 @@ namespace PlanetaryWarCopter
                 {
                     axisGrav = Vector3D.Normalize(axisGrav);
                 }
+
                 Vector3D currentForwardVector = Vector3D.Reject(ForwardVector, gravVectorNorm);
                 Vector3D axisForward = currentForwardVector.Cross(_controller.WorldMatrix.Forward);
                 if (currentForwardVector.Dot(_controller.WorldMatrix.Forward) < 0)
@@ -411,20 +412,13 @@ namespace PlanetaryWarCopter
                     axisForward = Vector3D.Normalize(axisForward);
                 }
 
-                float pitch = (float)axisGrav.Dot(_controller.WorldMatrix.Right);
-                float roll = (float)axisGrav.Dot(_controller.WorldMatrix.Backward);
-                float yaw = (float)axisForward.Dot(_controller.WorldMatrix.Up);
-                if (ForwardVector.IsZero() || !IsMoving)
-                {
-                    yaw = 0;
-                }
-
+                CalculateGyroMult();
                 foreach (IMyGyro gyro in Gyroscopes)
                 {
                     gyro.GyroOverride = true;
-                    gyro.Pitch = (float)axisGrav.Dot(gyro.WorldMatrix.Right) * myScript.GyroMult;
-                    gyro.Roll = (float)axisGrav.Dot(gyro.WorldMatrix.Backward) * myScript.GyroMult;
-                    gyro.Yaw = (float)axisForward.Dot(gyro.WorldMatrix.Up) * myScript.GyroMult;
+                    gyro.Pitch = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Right) * GyroMult;
+                    gyro.Roll = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Backward) * GyroMult;
+                    gyro.Yaw = (float)(axisGrav + axisForward).Dot(gyro.WorldMatrix.Up) * GyroMult;
                 }
             }
 
@@ -576,6 +570,13 @@ namespace PlanetaryWarCopter
                 {
                     thrust.ThrustOverride = value / list.Count;
                 }
+            }
+
+            private void CalculateGyroMult()
+            {
+                double shipMass = _controller.CalculateShipMass().PhysicalMass;
+                int mult = (int)Math.Round(shipMass / (Gyroscopes.Count * 5000));
+                GyroMult = mult;
             }
         }
 

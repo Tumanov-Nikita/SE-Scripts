@@ -7,6 +7,7 @@ using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.IO;
 using System.Reflection;
@@ -88,6 +89,10 @@ namespace AutoMinerVertHyd
         /// </summary>
         public readonly float TanksAndBatteriesFillingCoeff = 0.75f;
         /// <summary>
+        /// Убирать воксели при копании, пока не наткнемся на руду
+        /// </summary>
+        public readonly bool ClearingTerrain = true;
+        /// <summary>
         /// Максимальная высота над уровнем моря для дуги перемещения, в метрах
         /// </summary>
         public readonly float ArcHeightMaximum = 14000;
@@ -100,6 +105,14 @@ namespace AutoMinerVertHyd
         /// </summary>
         public readonly float MiningSpeedLimit = 0.15f;
         /// <summary>
+        /// Разрешает использование режима расчистки при выкапывании шахты
+        /// </summary>
+        public readonly bool ClearingModeEnabled = true;
+        /// <summary>
+        /// Глубина шахты, до достижения которой бурение происходит в режиме расчистки, в %
+        /// </summary>
+        public readonly byte DepthThreshholdForClearingMode = 85;
+        /// <summary>
         /// Максимально допустимая точность для совмещения с точкой назначения, в м
         /// </summary>
         public readonly float AcceptableMovingAccuracy = 0.5f;
@@ -110,15 +123,16 @@ namespace AutoMinerVertHyd
         /// <summary>
         /// Мультипликатор скорости для перемещения над поверхностью в режиме выкапывания шахты
         /// </summary>
-        public readonly float AboveGroundSpeedMultiplier = 6f;
+        public readonly float AboveGroundSpeedMultiplier = 10f;
         /// <summary>
         /// Минимальная высота над поверхностью для ускоренного перемещения в режиме выкапывания шахты
         /// </summary>
-        public readonly float AboveGroundSpeedHeight = 0.5f;
+        public readonly float AboveGroundSpeedHeight = 3f;
         /// <summary>
         /// Мультипликатор высоты для дуги перемещения, рекомендуется от 0.3 до 1
         /// </summary>
-        public readonly float ArcHeightMult = 1.0f;
+        public readonly float ArcHeightMult = 0.8f;
+        
 
         #endregion
 
@@ -134,6 +148,7 @@ namespace AutoMinerVertHyd
         private string CurrentStatus = "";
         private static Program myScript;
         MiningHandler miningHandler;
+        
 
 
         public Program()
@@ -173,6 +188,7 @@ namespace AutoMinerVertHyd
                 default:
                     IconSpin();
                     myScript.Echo("Current status is " + CurrentStatus);
+                    myScript.Echo(miningHandler.GetShaftsStatus());
                     HandleStatus();
                     break;
             }
@@ -273,6 +289,11 @@ namespace AutoMinerVertHyd
             private bool ArcInitialized = false;
             private bool ArcIsAscending = true;
             private int GyroMult = 1;
+            private double OrePosition = -100;
+            //private int ClearingTerrainCount = 0;
+            //private bool ClearingTerrainMode = true;
+
+            //IMyTextPanel display;
 
             #endregion
 
@@ -350,6 +371,9 @@ namespace AutoMinerVertHyd
 
                 RemoteControl.TryGetPlanetPosition(out PlanetCenter);
 
+
+                //display = (IMyTextPanel)myScript.GridTerminalSystem.GetBlockWithName("LCD panel");
+
                 #endregion
             }
 
@@ -365,10 +389,49 @@ namespace AutoMinerVertHyd
                 {
                     if (IsGridAlignedToGravity)
                     {
+                        var currentValidShaft = GetCurrentShaft();
+                        var currentProgress = GetProgressInShaft(currentValidShaft);
+                        //display.WriteText($"ClearingTerrainMode = {ClearingTerrainMode}\n", true);
+                        //display.WriteText($"ClearingTerrainCount = {ClearingTerrainCount}\n", true);
+                        //display.WriteText($"OrePosition = {OrePosition:F}\n", true);
 
                         SetDrillsEnabled(true);
+                        if (myScript.ClearingModeEnabled)
+                        {
+                            if (OrePosition == -100)
+                            {
+                                SetDrillsClearingTerrain(currentProgress < myScript.DepthThreshholdForClearingMode);
+                                if (CheckOreInContainers())
+                                {
+                                    //display.WriteText($"CheckOreInContainers() == true\n", true);
+                                    OrePosition = currentProgress - 5; // оставляем запас по уровню руды для следующих шахт
+                                    SetDrillsClearingTerrain(false);
+                                }
+                                //else //TODO: Реализация алгоритма снятия верхнего слоя грунта для проверки и "умного" переключения режима буров
+                                //{
+                                //    display.WriteText($"CheckOreInContainers() == false\n", true);
+                                //    if ((!ClearingTerrainMode && ClearingTerrainCount > 45 / myScript.MiningSpeedLimit)
+                                //        || (ClearingTerrainMode && ClearingTerrainCount > 4.5 / myScript.MiningSpeedLimit))
+                                //    {
+                                //        ClearingTerrainCount = 0;
+                                //        SetDrillsClearingTerrain(!ClearingTerrainMode);
+                                //        ClearingTerrainMode = !ClearingTerrainMode;
+                                //    }
+                                //    ClearingTerrainCount++;
+                                //}
+                            }
+                            else
+                            {
+                                SetDrillsClearingTerrain(currentProgress < OrePosition);
+                            }
+                        }
+                        else { 
+                            SetDrillsClearingTerrain(false);
+                        }
+                        
+                        
 
-                        var currentValidShaft = GetCurrentShaft();
+                        
                         if (!currentValidShaft.endCoords.IsZero())
                         {
                             CurrentMiningPosition = currentValidShaft.endCoords;
@@ -377,7 +440,7 @@ namespace AutoMinerVertHyd
                         var speedLimit = myScript.MiningSpeedLimit;
                         double elevationSurface;
                         RemoteControl.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevationSurface);
-                        if (elevationSurface - SizeInMeters.Y > myScript.AboveGroundSpeedHeight) // Увеличение скорости, если находимся больше, чем в AboveGroundSpeedHeight метрах над поверхностью
+                        if (elevationSurface - SizeInMeters.Y > myScript.AboveGroundSpeedHeight && currentProgress < 50) // Увеличение скорости, если находимся больше, чем в AboveGroundSpeedHeight метрах над поверхностью
                         {
                             speedLimit *= myScript.AboveGroundSpeedMultiplier;
                         }
@@ -1119,6 +1182,28 @@ namespace AutoMinerVertHyd
                 GyroMult = mult;
             }
             /// <summary>
+            /// Проверяет контейнеры корабля на наличие руды (кроме камня)
+            /// </summary>
+            /// <returns>true, если найдена руда, в остальных случаях false</returns>
+            private bool CheckOreInContainers()
+            {
+                foreach (IMyInventoryOwner storage in Storages)
+                {
+                    IMyInventory inventory = storage.GetInventory(0);
+                    List<MyInventoryItem> items = new List<MyInventoryItem>();
+                    inventory.GetItems(items);
+                    for (int i = 0; i < items.Count; i++)
+                    {
+                        MyInventoryItem item = items[i];
+                        if (item.Type.TypeId == "MyObjectBuilder_Ore" && item.Type.SubtypeId != "Stone")
+                        {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            /// <summary>
             /// Устанавливает режим работы дрона
             /// </summary>
             /// <param name="status">Новый режим работы</param>
@@ -1127,7 +1212,7 @@ namespace AutoMinerVertHyd
                 myScript.CurrentStatus = status;
             }
             /// <summary>
-            /// Устанавливает всем бурам дрона значение "Включено"
+            /// Включает/Выключает все буры дрона
             /// </summary>
             /// <param name="enabled">Значение "Включено"</param>
             private void SetDrillsEnabled(bool enabled)
@@ -1135,6 +1220,17 @@ namespace AutoMinerVertHyd
                 foreach (IMyShipDrill drill in Drills)
                 {
                     drill.Enabled = enabled;
+                }
+            }
+            /// <summary>
+            /// Включает/Выключает всем бурам дрона режим удаления вокселей
+            /// </summary>
+            /// <param name="value"></param>
+            private void SetDrillsClearingTerrain(bool value)
+            {
+                foreach (IMyShipDrill drill in Drills)
+                {
+                    drill.TerrainClearingMode = value;
                 }
             }
             /// <summary>
@@ -1216,6 +1312,28 @@ namespace AutoMinerVertHyd
                     }
                 }
                 return new ShaftMark();
+            }
+            /// <summary>
+            /// Возвращает прогресс в шахте, в % 
+            /// </summary>
+            /// <param name="currShaft">Шахта, в которой отслеживаем прогресс</param>
+            private double GetProgressInShaft(ShaftMark currShaft)
+            {
+                Vector3D shaftLine = currShaft.endCoords - currShaft.startCoords;
+                Vector3D progressLine = RemoteControl.GetPosition() - currShaft.startCoords;
+                //display.WriteText($"shaftLine = {shaftLine.Length():F}\n", false);
+                //display.WriteText($"progressLine = {progressLine.Length():F}\n", true);
+
+                double progress = (progressLine.Length() / shaftLine.Length()) * 100;
+                //display.WriteText($"progress = {progress:F}\n", true);
+                return progress;
+            }
+            /// <summary>
+            /// Возвращает строковое состояние прогресса по шахтам. Пример:"Прогресс по шахтам: 9/16"
+            /// </summary>
+            public string GetShaftsStatus()
+            {
+                return ShaftMarks.Count != 0 ? $"Прогресс по шахтам: {ShaftMarks.Count(a => a.isFinished)}/{ShaftMarks.Count}\n" : "Шахты не начаты\n";
             }
 
             #endregion
